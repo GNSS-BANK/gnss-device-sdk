@@ -23,6 +23,7 @@ gnss-device-sdk/
 ## Доступные адаптеры
 
 - [HackRF](gnss-hackrf/README.md)
+- [ADALM-Pluto](gnss-pluto/README.md)
 
 ## Подключение SDK
 

@@ -13,6 +13,9 @@ type SampleFormat string
 const (
 	// SampleFormatComplexInt8 — чередующиеся знаковые 8-битные I/Q: I0, Q0, I1, Q1.
 	SampleFormatComplexInt8 SampleFormat = "complex-int8"
+	// SampleFormatComplexInt16LE — чередующиеся знаковые 16-битные I/Q в
+	// little-endian: I0, Q0, I1, Q1.
+	SampleFormatComplexInt16LE SampleFormat = "complex-int16-le"
 )
 
 // Gain задаёт значение именованного каскада усиления в децибелах.
