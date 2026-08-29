@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
+	fynetheme "fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -166,12 +167,15 @@ func TestThemeOptionAndControls(t *testing.T) {
 }
 
 func TestFontOptionAndGOSTResource(t *testing.T) {
-	chart, err := newPlot(WithFont(FontGOSTTypeA))
+	chart, err := newPlot(WithFont(FontGOSTTypeA), WithFontSize(18))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if chart.snapshot().font != FontGOSTTypeA {
 		t.Fatal("WithFont did not configure GOST Type A")
+	}
+	if chart.snapshot().fontSize != 18 {
+		t.Fatal("WithFontSize did not configure the base font size")
 	}
 	if _, err := newPlot(WithFont(FontFamily(99))); err == nil {
 		t.Fatal("expected invalid font error")
@@ -212,6 +216,68 @@ func TestFontOptionAndGOSTResource(t *testing.T) {
 	actual := window.(*plotWindow).application.Settings().Theme().Font(fyne.TextStyle{})
 	if actual.Name() != gostTypeAResource.Name() {
 		t.Fatalf("unexpected application font: %q", actual.Name())
+	}
+	actualSize := window.(*plotWindow).application.Settings().Theme().Size(fynetheme.SizeNameText)
+	if actualSize != 18 {
+		t.Fatalf("unexpected application font size: %v", actualSize)
+	}
+}
+
+func TestFontSizeScalesRendererAndInteraction(t *testing.T) {
+	chart, err := newPlot(WithFontSize(28), WithBackend(BackendCPU))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []float32{0, 5, 73, float32(math.NaN()), float32(math.Inf(1))} {
+		if _, err := newPlot(WithFontSize(invalid)); err == nil {
+			t.Fatalf("expected invalid font size error for %v", invalid)
+		}
+	}
+
+	chart.Resize(fyne.NewSize(900, 600))
+	if err := chart.SetAxes(AxesConfig{
+		X: AxisConfig{Fixed: true, Min: 0, Max: 10, Ticks: 3},
+		Y: AxisConfig{Fixed: true, Min: 0, Max: 10, Ticks: 3},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := chart.SetSeries([]Series{{
+		ID:     "signal",
+		Points: []Point{{X: 5, Y: 5}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	renderer := chart.CreateRenderer().(*plotRenderer)
+	if renderer.labelX.TextSize != 28 || renderer.tickX[0].TextSize != 22 || renderer.legendTexts[0].TextSize != 24 {
+		t.Fatalf("unexpected scaled font sizes: label=%v tick=%v legend=%v",
+			renderer.labelX.TextSize,
+			renderer.tickX[0].TextSize,
+			renderer.legendTexts[0].TextSize,
+		)
+	}
+	if renderer.labelY.Size().Width != 48 {
+		t.Fatalf("unexpected scaled vertical label width: %v", renderer.labelY.Size().Width)
+	}
+
+	metrics := newPlotLayoutMetrics(28)
+	plotWidth := chart.Size().Width - metrics.marginLeft - metrics.marginRight
+	plotHeight := chart.Size().Height - metrics.marginTop - metrics.marginBottom
+	chart.MouseMoved(&desktop.MouseEvent{PointEvent: fyne.PointEvent{Position: fyne.NewPos(
+		metrics.marginLeft+plotWidth/2,
+		metrics.marginTop+plotHeight/2,
+	)}})
+	if hover := chart.snapshot().hover; hover == nil || hover.point != (Point{X: 5, Y: 5}) {
+		t.Fatalf("scaled layout hover did not select the point: %#v", hover)
+	}
+
+	largeChart, err := newPlot(WithFontSize(maxFontSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	largeMinimum := largeChart.CreateRenderer().MinSize()
+	if largeMinimum.Width <= 640 || largeMinimum.Height <= 360 {
+		t.Fatalf("large font did not expand minimum size: %#v", largeMinimum)
 	}
 }
 

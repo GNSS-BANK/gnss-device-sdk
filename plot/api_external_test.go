@@ -11,6 +11,7 @@ func TestPublicAPIRequiresOnlyPlotImport(t *testing.T) {
 		plot.WithMinSize(plot.NewSize(800, 450)),
 		plot.WithTheme(plot.ThemeDark),
 		plot.WithFont(plot.FontGOSTTypeA),
+		plot.WithFontSize(18),
 		plot.WithBackend(plot.BackendAuto),
 	)
 	if err != nil {

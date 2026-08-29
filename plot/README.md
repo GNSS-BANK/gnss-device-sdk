@@ -37,6 +37,7 @@ func main() {
 		plot.WithBackend(plot.BackendAuto),
 		plot.WithTheme(plot.ThemeDark),
 		plot.WithFont(plot.FontGOSTTypeA),
+		plot.WithFontSize(18),
 		plot.WithMinSize(plot.NewSize(800, 450)),
 	)
 	if err != nil {
@@ -187,6 +188,7 @@ chart, err := plot.New(
 ```go
 chart, err := plot.New(
 	plot.WithFont(plot.FontGOSTTypeA),
+	plot.WithFontSize(18),
 )
 ```
 
@@ -199,6 +201,13 @@ chart, err := plot.New(
 модуль и распространяется по SIL Open Font License 1.1; полный текст лицензии
 находится в `assets/fonts/OFL-1.1.txt`. Использован неизменённый файл из
 [официального пакета openSUSE](https://software.opensuse.org/package/opengost-fonts).
+
+`WithFontSize` принимает базовый размер от 6 до 72 логических пикселей. По
+умолчанию используется `14`. Подписи осей и controls используют базовый размер,
+а деления, легенда и tooltip сохраняют прежние визуальные пропорции. Вместе с
+текстом автоматически масштабируются поля графика, легенда, tooltip и область
+hit-testing, поэтому крупный шрифт не смещает zoom, drag или hover относительно
+отрисованных данных.
 
 ## Стандартная панель управления
 

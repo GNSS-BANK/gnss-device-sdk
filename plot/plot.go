@@ -44,6 +44,7 @@ type plotOptions struct {
 	backend   RenderBackend
 	theme     ThemeVariant
 	font      FontFamily
+	fontSize  float32
 }
 
 // WithMaxPoints задаёт размер скользящего окна каждой потоковой серии.
@@ -112,6 +113,18 @@ func WithFont(font FontFamily) Option {
 	}
 }
 
+// WithFontSize задаёт базовый размер шрифта в логических пикселях. Остальные
+// текстовые элементы и поля графика масштабируются пропорционально.
+func WithFontSize(size float32) Option {
+	return func(options *plotOptions) error {
+		if err := validateFontSize(size); err != nil {
+			return err
+		}
+		options.fontSize = size
+		return nil
+	}
+}
+
 type axisRange struct {
 	xMin float64
 	xMax float64
@@ -133,6 +146,7 @@ type plotSnapshot struct {
 	revision    uint64
 	theme       ThemeVariant
 	font        FontFamily
+	fontSize    float32
 	backend     RenderBackend
 	legend      bool
 	hover       *hoverState
@@ -150,6 +164,7 @@ type plotWidget struct {
 	axes          AxesConfig
 	theme         ThemeVariant
 	font          FontFamily
+	fontSize      float32
 	backend       RenderBackend
 	legendVisible bool
 	paused        bool
@@ -175,6 +190,7 @@ func newPlot(options ...Option) (*plotWidget, error) {
 		minSize:   fyne.NewSize(640, 360),
 		theme:     ThemeDark,
 		font:      FontDefault,
+		fontSize:  defaultFontSize,
 	}
 	for _, option := range options {
 		if option != nil {
@@ -191,6 +207,7 @@ func newPlot(options ...Option) (*plotWidget, error) {
 		},
 		theme:         settings.theme,
 		font:          settings.font,
+		fontSize:      settings.fontSize,
 		backend:       settings.backend,
 		legendVisible: true,
 		maxPoints:     settings.maxPoints,
@@ -641,6 +658,7 @@ func (plot *plotWidget) snapshot() plotSnapshot {
 		revision:    plot.revision,
 		theme:       plot.theme,
 		font:        plot.font,
+		fontSize:    plot.fontSize,
 		backend:     plot.backend,
 		legend:      plot.legendVisible,
 		hover:       hover,

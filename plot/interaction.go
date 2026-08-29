@@ -13,21 +13,22 @@ func (plot *plotWidget) Scrolled(event *fyne.ScrollEvent) {
 		return
 	}
 	size := plot.Size()
-	plotWidth := size.Width - plotMarginLeft - plotMarginRight
-	plotHeight := size.Height - plotMarginTop - plotMarginBottom
+	metrics := newPlotLayoutMetrics(plot.fontSize)
+	plotWidth := size.Width - metrics.marginLeft - metrics.marginRight
+	plotHeight := size.Height - metrics.marginTop - metrics.marginBottom
 	if plotWidth <= 0 || plotHeight <= 0 {
 		return
 	}
 	position := event.Position
-	if position.X < plotMarginLeft || position.X > plotMarginLeft+plotWidth || position.Y < plotMarginTop || position.Y > plotMarginTop+plotHeight {
+	if position.X < metrics.marginLeft || position.X > metrics.marginLeft+plotWidth || position.Y < metrics.marginTop || position.Y > metrics.marginTop+plotHeight {
 		return
 	}
 	factor := 1.25
 	if event.Scrolled.DY > 0 {
 		factor = 0.8
 	}
-	xRatio := float64((position.X - plotMarginLeft) / plotWidth)
-	yRatio := float64((plotMarginTop + plotHeight - position.Y) / plotHeight)
+	xRatio := float64((position.X - metrics.marginLeft) / plotWidth)
+	yRatio := float64((metrics.marginTop + plotHeight - position.Y) / plotHeight)
 	_ = plot.zoomAt(factor, xRatio, yRatio)
 }
 
@@ -38,8 +39,9 @@ func (plot *plotWidget) Dragged(event *fyne.DragEvent) {
 		return
 	}
 	size := plot.Size()
-	plotWidth := size.Width - plotMarginLeft - plotMarginRight
-	plotHeight := size.Height - plotMarginTop - plotMarginBottom
+	metrics := newPlotLayoutMetrics(plot.fontSize)
+	plotWidth := size.Width - metrics.marginLeft - metrics.marginRight
+	plotHeight := size.Height - metrics.marginTop - metrics.marginBottom
 	if plotWidth <= 0 || plotHeight <= 0 {
 		return
 	}
@@ -74,11 +76,12 @@ func (plot *plotWidget) MouseMoved(event *desktop.MouseEvent) {
 		return
 	}
 	snapshot := plot.snapshot()
+	metrics := newPlotLayoutMetrics(snapshot.fontSize)
 	size := plot.Size()
-	plotWidth := size.Width - plotMarginLeft - plotMarginRight
-	plotHeight := size.Height - plotMarginTop - plotMarginBottom
+	plotWidth := size.Width - metrics.marginLeft - metrics.marginRight
+	plotHeight := size.Height - metrics.marginTop - metrics.marginBottom
 	position := event.Position
-	if plotWidth <= 0 || plotHeight <= 0 || position.X < plotMarginLeft || position.X > plotMarginLeft+plotWidth || position.Y < plotMarginTop || position.Y > plotMarginTop+plotHeight {
+	if plotWidth <= 0 || plotHeight <= 0 || position.X < metrics.marginLeft || position.X > metrics.marginLeft+plotWidth || position.Y < metrics.marginTop || position.Y > metrics.marginTop+plotHeight {
 		plot.clearHover()
 		return
 	}
@@ -92,8 +95,8 @@ func (plot *plotWidget) MouseMoved(event *desktop.MouseEvent) {
 			if xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1 {
 				continue
 			}
-			x := plotMarginLeft + float32(xRatio)*plotWidth
-			y := plotMarginTop + plotHeight - float32(yRatio)*plotHeight
+			x := metrics.marginLeft + float32(xRatio)*plotWidth
+			y := metrics.marginTop + plotHeight - float32(yRatio)*plotHeight
 			distance := math.Hypot(float64(position.X-x), float64(position.Y-y))
 			if distance < bestDistance {
 				bestDistance = distance
@@ -101,7 +104,7 @@ func (plot *plotWidget) MouseMoved(event *desktop.MouseEvent) {
 			}
 		}
 	}
-	if bestDistance > 14 {
+	if bestDistance > float64(metrics.value(14)) {
 		best = nil
 	}
 

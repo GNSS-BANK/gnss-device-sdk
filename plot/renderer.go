@@ -63,6 +63,7 @@ type plotRenderer struct {
 // CreateRenderer реализует fyne.Widget и создаёт GPU/CPU renderer графика.
 func (plot *plotWidget) CreateRenderer() fyne.WidgetRenderer {
 	renderer := &plotRenderer{plot: plot}
+	metrics := newPlotLayoutMetrics(plot.fontSize)
 	renderer.background = canvas.NewRectangle(color.Transparent)
 	renderer.plotBackground = canvas.NewRectangle(color.Transparent)
 	renderer.objects = append(renderer.objects, renderer.background, renderer.plotBackground)
@@ -95,19 +96,20 @@ func (plot *plotWidget) CreateRenderer() fyne.WidgetRenderer {
 	renderer.objects = append(renderer.objects, renderer.axisX, renderer.axisY)
 	for index := 0; index < maxAxisTicks; index++ {
 		label := canvas.NewText("", color.Transparent)
-		label.TextSize = 11
+		label.TextSize = metrics.tickSize
 		label.Alignment = fyne.TextAlignCenter
 		renderer.tickX = append(renderer.tickX, label)
 		renderer.objects = append(renderer.objects, label)
 	}
 	for index := 0; index < maxAxisTicks; index++ {
 		label := canvas.NewText("", color.Transparent)
-		label.TextSize = 11
+		label.TextSize = metrics.tickSize
 		label.Alignment = fyne.TextAlignTrailing
 		renderer.tickY = append(renderer.tickY, label)
 		renderer.objects = append(renderer.objects, label)
 	}
 	renderer.labelX = canvas.NewText("", color.Transparent)
+	renderer.labelX.TextSize = plot.fontSize
 	renderer.labelX.Alignment = fyne.TextAlignCenter
 	renderer.labelX.TextStyle = fyne.TextStyle{Bold: true}
 	renderer.labelY, renderer.labelYState = newVerticalText()
@@ -119,7 +121,7 @@ func (plot *plotWidget) CreateRenderer() fyne.WidgetRenderer {
 	for index := 0; index < plot.maxSeries; index++ {
 		swatch := canvas.NewRectangle(color.Transparent)
 		text := canvas.NewText("", color.Transparent)
-		text.TextSize = 12
+		text.TextSize = metrics.legendSize
 		renderer.legendSwatches = append(renderer.legendSwatches, swatch)
 		renderer.legendTexts = append(renderer.legendTexts, text)
 		renderer.objects = append(renderer.objects, swatch, text)
@@ -130,7 +132,7 @@ func (plot *plotWidget) CreateRenderer() fyne.WidgetRenderer {
 	renderer.hoverBox = canvas.NewRectangle(color.Transparent)
 	renderer.hoverBox.CornerRadius = 4
 	renderer.hoverText = canvas.NewText("", color.Transparent)
-	renderer.hoverText.TextSize = 12
+	renderer.hoverText.TextSize = metrics.hoverSize
 	renderer.objects = append(renderer.objects, renderer.hoverMarker, renderer.hoverBox, renderer.hoverText)
 	renderer.Refresh()
 	return renderer
@@ -144,7 +146,17 @@ func (renderer *plotRenderer) Layout(size fyne.Size) {
 }
 
 func (renderer *plotRenderer) MinSize() fyne.Size {
-	return renderer.plot.snapshot().minimumSize
+	snapshot := renderer.plot.snapshot()
+	metrics := newPlotLayoutMetrics(snapshot.fontSize)
+	minimum := snapshot.minimumSize
+	minimumPlotWidth := max(float32(200), metrics.value(196))
+	minimumPlotHeight := float32(150)
+	if snapshot.legend && len(snapshot.series) > 0 {
+		minimumPlotHeight = max(minimumPlotHeight, metrics.value(float32(28+len(snapshot.series)*22)))
+	}
+	minimum.Width = max(minimum.Width, metrics.marginLeft+metrics.marginRight+minimumPlotWidth)
+	minimum.Height = max(minimum.Height, metrics.marginTop+metrics.marginBottom+minimumPlotHeight)
+	return minimum
 }
 
 func (renderer *plotRenderer) Objects() []fyne.CanvasObject {
@@ -209,14 +221,15 @@ func (renderer *plotRenderer) Refresh() {
 }
 
 func (renderer *plotRenderer) layout(size fyne.Size, snapshot plotSnapshot) {
-	if size.Width < plotMarginLeft+plotMarginRight+1 {
-		size.Width = plotMarginLeft + plotMarginRight + 1
+	metrics := newPlotLayoutMetrics(snapshot.fontSize)
+	if size.Width < metrics.marginLeft+metrics.marginRight+1 {
+		size.Width = metrics.marginLeft + metrics.marginRight + 1
 	}
-	if size.Height < plotMarginTop+plotMarginBottom+1 {
-		size.Height = plotMarginTop + plotMarginBottom + 1
+	if size.Height < metrics.marginTop+metrics.marginBottom+1 {
+		size.Height = metrics.marginTop + metrics.marginBottom + 1
 	}
-	plotPosition := fyne.NewPos(plotMarginLeft, plotMarginTop)
-	plotSize := fyne.NewSize(size.Width-plotMarginLeft-plotMarginRight, size.Height-plotMarginTop-plotMarginBottom)
+	plotPosition := fyne.NewPos(metrics.marginLeft, metrics.marginTop)
+	plotSize := fyne.NewSize(size.Width-metrics.marginLeft-metrics.marginRight, size.Height-metrics.marginTop-metrics.marginBottom)
 	renderer.background.Move(fyne.NewPos(0, 0))
 	renderer.background.Resize(size)
 	renderer.plotBackground.Move(plotPosition)
@@ -233,14 +246,14 @@ func (renderer *plotRenderer) layout(size fyne.Size, snapshot plotSnapshot) {
 	renderer.axisY.Position1 = plotPosition
 	renderer.axisY.Position2 = fyne.NewPos(plotPosition.X, plotPosition.Y+plotSize.Height)
 
-	renderer.layoutAxisX(snapshot, plotPosition, plotSize)
-	renderer.layoutAxisY(snapshot, plotPosition, plotSize)
-	renderer.labelX.Move(fyne.NewPos(plotPosition.X, size.Height-25))
-	renderer.labelX.Resize(fyne.NewSize(plotSize.Width, 22))
-	renderer.labelY.Move(fyne.NewPos(2, plotPosition.Y))
-	renderer.labelY.Resize(fyne.NewSize(24, plotSize.Height))
-	renderer.layoutLegend(snapshot, plotPosition, plotSize)
-	renderer.layoutHover(snapshot, plotPosition, plotSize, size)
+	renderer.layoutAxisX(snapshot, plotPosition, plotSize, metrics)
+	renderer.layoutAxisY(snapshot, plotPosition, plotSize, metrics)
+	renderer.labelX.Move(fyne.NewPos(plotPosition.X, size.Height-metrics.value(25)))
+	renderer.labelX.Resize(fyne.NewSize(plotSize.Width, metrics.value(22)))
+	renderer.labelY.Move(fyne.NewPos(metrics.value(2), plotPosition.Y))
+	renderer.labelY.Resize(fyne.NewSize(metrics.value(24), plotSize.Height))
+	renderer.layoutLegend(snapshot, plotPosition, plotSize, metrics)
+	renderer.layoutHover(snapshot, plotPosition, plotSize, size, metrics)
 }
 
 func (renderer *plotRenderer) refreshAxes(snapshot plotSnapshot, colors palette) {
@@ -266,29 +279,29 @@ func (renderer *plotRenderer) refreshAxes(snapshot plotSnapshot, colors palette)
 	}
 }
 
-func (renderer *plotRenderer) layoutAxisX(snapshot plotSnapshot, position fyne.Position, size fyne.Size) {
+func (renderer *plotRenderer) layoutAxisX(snapshot plotSnapshot, position fyne.Position, size fyne.Size, metrics plotLayoutMetrics) {
 	ticks := snapshot.axes.X.Ticks
 	for index := 0; index < ticks; index++ {
 		ratio := tickRatio(index, ticks)
 		x := position.X + float32(ratio)*size.Width
 		value := snapshot.view.xMin + ratio*(snapshot.view.xMax-snapshot.view.xMin)
 		renderer.tickX[index].Text = formatAxisValue(snapshot.axes.X, value)
-		renderer.tickX[index].Move(fyne.NewPos(x-45, position.Y+size.Height+7))
-		renderer.tickX[index].Resize(fyne.NewSize(90, 18))
+		renderer.tickX[index].Move(fyne.NewPos(x-metrics.value(45), position.Y+size.Height+metrics.value(7)))
+		renderer.tickX[index].Resize(fyne.NewSize(metrics.value(90), metrics.value(18)))
 		renderer.gridX[index].Position1 = fyne.NewPos(x, position.Y)
 		renderer.gridX[index].Position2 = fyne.NewPos(x, position.Y+size.Height)
 	}
 }
 
-func (renderer *plotRenderer) layoutAxisY(snapshot plotSnapshot, position fyne.Position, size fyne.Size) {
+func (renderer *plotRenderer) layoutAxisY(snapshot plotSnapshot, position fyne.Position, size fyne.Size, metrics plotLayoutMetrics) {
 	ticks := snapshot.axes.Y.Ticks
 	for index := 0; index < ticks; index++ {
 		ratio := tickRatio(index, ticks)
 		y := position.Y + size.Height - float32(ratio)*size.Height
 		value := snapshot.view.yMin + ratio*(snapshot.view.yMax-snapshot.view.yMin)
 		renderer.tickY[index].Text = formatAxisValue(snapshot.axes.Y, value)
-		renderer.tickY[index].Move(fyne.NewPos(29, y-9))
-		renderer.tickY[index].Resize(fyne.NewSize(plotMarginLeft-35, 18))
+		renderer.tickY[index].Move(fyne.NewPos(metrics.value(29), y-metrics.value(9)))
+		renderer.tickY[index].Resize(fyne.NewSize(metrics.marginLeft-metrics.value(35), metrics.value(18)))
 		renderer.gridY[index].Position1 = fyne.NewPos(position.X, y)
 		renderer.gridY[index].Position2 = fyne.NewPos(position.X+size.Width, y)
 	}
@@ -314,22 +327,22 @@ func (renderer *plotRenderer) refreshLegend(snapshot plotSnapshot, colors palett
 	}
 }
 
-func (renderer *plotRenderer) layoutLegend(snapshot plotSnapshot, position fyne.Position, size fyne.Size) {
+func (renderer *plotRenderer) layoutLegend(snapshot plotSnapshot, position fyne.Position, size fyne.Size, metrics plotLayoutMetrics) {
 	if !snapshot.legend || len(snapshot.series) == 0 {
 		return
 	}
-	boxWidth := float32(180)
-	boxHeight := float32(12 + len(snapshot.series)*22)
-	boxX := position.X + size.Width - boxWidth - 8
-	boxY := position.Y + 8
+	boxWidth := metrics.value(180)
+	boxHeight := metrics.value(float32(12 + len(snapshot.series)*22))
+	boxX := position.X + size.Width - boxWidth - metrics.value(8)
+	boxY := position.Y + metrics.value(8)
 	renderer.legendBox.Move(fyne.NewPos(boxX, boxY))
 	renderer.legendBox.Resize(fyne.NewSize(boxWidth, boxHeight))
 	for index := range snapshot.series {
-		y := boxY + 8 + float32(index*22)
-		renderer.legendSwatches[index].Move(fyne.NewPos(boxX+8, y+5))
-		renderer.legendSwatches[index].Resize(fyne.NewSize(20, 4))
-		renderer.legendTexts[index].Move(fyne.NewPos(boxX+35, y))
-		renderer.legendTexts[index].Resize(fyne.NewSize(boxWidth-43, 18))
+		y := boxY + metrics.value(8+float32(index*22))
+		renderer.legendSwatches[index].Move(fyne.NewPos(boxX+metrics.value(8), y+metrics.value(5)))
+		renderer.legendSwatches[index].Resize(fyne.NewSize(metrics.value(20), metrics.value(4)))
+		renderer.legendTexts[index].Move(fyne.NewPos(boxX+metrics.value(35), y))
+		renderer.legendTexts[index].Resize(fyne.NewSize(boxWidth-metrics.value(43), metrics.value(18)))
 	}
 }
 
@@ -352,7 +365,7 @@ func (renderer *plotRenderer) refreshHover(snapshot plotSnapshot, colors palette
 	)
 }
 
-func (renderer *plotRenderer) layoutHover(snapshot plotSnapshot, position fyne.Position, plotSize fyne.Size, widgetSize fyne.Size) {
+func (renderer *plotRenderer) layoutHover(snapshot plotSnapshot, position fyne.Position, plotSize fyne.Size, widgetSize fyne.Size, metrics plotLayoutMetrics) {
 	if snapshot.hover == nil {
 		return
 	}
@@ -360,23 +373,23 @@ func (renderer *plotRenderer) layoutHover(snapshot plotSnapshot, position fyne.P
 	yRatio := (snapshot.hover.point.Y - snapshot.view.yMin) / (snapshot.view.yMax - snapshot.view.yMin)
 	x := position.X + float32(xRatio)*plotSize.Width
 	y := position.Y + plotSize.Height - float32(yRatio)*plotSize.Height
-	renderer.hoverMarker.Move(fyne.NewPos(x-5, y-5))
-	renderer.hoverMarker.Resize(fyne.NewSize(10, 10))
+	renderer.hoverMarker.Move(fyne.NewPos(x-metrics.value(5), y-metrics.value(5)))
+	renderer.hoverMarker.Resize(fyne.NewSize(metrics.value(10), metrics.value(10)))
 	measuredText := fyne.MeasureText(renderer.hoverText.Text, renderer.hoverText.TextSize, renderer.hoverText.TextStyle)
-	textWidth := float32(math.Max(130, float64(measuredText.Width+16)))
-	textHeight := float32(28)
-	boxX := snapshot.hover.position.X + 14
-	boxY := snapshot.hover.position.Y - textHeight - 8
-	if boxX+textWidth > widgetSize.Width-4 {
-		boxX = snapshot.hover.position.X - textWidth - 14
+	textWidth := float32(math.Max(float64(metrics.value(130)), float64(measuredText.Width+metrics.value(16))))
+	textHeight := metrics.value(28)
+	boxX := snapshot.hover.position.X + metrics.value(14)
+	boxY := snapshot.hover.position.Y - textHeight - metrics.value(8)
+	if boxX+textWidth > widgetSize.Width-metrics.value(4) {
+		boxX = snapshot.hover.position.X - textWidth - metrics.value(14)
 	}
-	if boxY < 4 {
-		boxY = snapshot.hover.position.Y + 14
+	if boxY < metrics.value(4) {
+		boxY = snapshot.hover.position.Y + metrics.value(14)
 	}
 	renderer.hoverBox.Move(fyne.NewPos(boxX, boxY))
 	renderer.hoverBox.Resize(fyne.NewSize(textWidth, textHeight))
-	renderer.hoverText.Move(fyne.NewPos(boxX+8, boxY+5))
-	renderer.hoverText.Resize(fyne.NewSize(textWidth-16, 18))
+	renderer.hoverText.Move(fyne.NewPos(boxX+metrics.value(8), boxY+metrics.value(5)))
+	renderer.hoverText.Resize(fyne.NewSize(textWidth-metrics.value(16), metrics.value(18)))
 }
 
 func tickRatio(index int, ticks int) float64 {
