@@ -13,70 +13,22 @@ gnss-device-sdk/
     └── tx/
 ```
 
-Первый адаптер — `gnss-hackrf`. Адаптеры следующих устройств должны
-реализовывать те же корневые интерфейсы `device.Receiver` и
-`device.Transmitter`, чтобы потребителей не приходилось изменять.
+Каждый адаптер должен реализовывать корневые интерфейсы `device.Receiver` и
+`device.Transmitter`, чтобы потребителей не приходилось изменять при выборе
+другого оборудования.
 
-## Приём данных с HackRF
+Инструкции по установке, подключению, параметрам и примеры использования
+находятся только в папке конкретного устройства.
 
-```go
-package main
+## Доступные адаптеры
 
-import (
-	"context"
-	"os"
+- [HackRF](gnss-hackrf/README.md)
 
-	device "github.com/GNSS-BANK/gnss-device-sdk"
-	"github.com/GNSS-BANK/gnss-device-sdk/gnss-hackrf/rx"
-)
+## Подключение SDK
 
-func main() {
-	output, err := os.Create("capture.ci8")
-	if err != nil {
-		panic(err)
-	}
-	defer output.Close()
-
-	receiver := rx.New()
-	err = receiver.Read(context.Background(), output, device.RXConfig{
-		StreamConfig: device.StreamConfig{
-			CenterFrequencyHz: 1_575_420_000,
-			SampleRateHz:      10_000_000,
-			SampleCount:       10_000_000,
-		},
-		Gains: []device.Gain{
-			{Stage: "LNA", ValueDB: 16},
-			{Stage: "VGA", ValueDB: 20},
-		},
-	})
-	if err != nil {
-		panic(err)
-	}
-}
+```bash
+go get github.com/GNSS-BANK/gnss-device-sdk
 ```
-
-## Передача данных через HackRF
-
-```go
-input, err := os.Open("signal.ci8")
-if err != nil {
-	panic(err)
-}
-defer input.Close()
-
-transmitter := tx.New()
-err = transmitter.Write(context.Background(), input, device.TXConfig{
-	StreamConfig: device.StreamConfig{
-		CenterFrequencyHz: 1_575_420_000,
-		SampleRateHz:      10_000_000,
-	},
-	Gains: []device.Gain{{Stage: "VGA", ValueDB: 12}},
-})
-```
-
-В режиме TX HackRF излучает радиочастотную энергию. Перед подключением антенны
-используйте необходимое ослабление и экранирование, а также убедитесь, что
-передача разрешена местными требованиями.
 
 ## Проверка
 
@@ -86,5 +38,4 @@ go vet ./...
 go build ./...
 ```
 
-Для аппаратной проверки дополнительно нужны подключённый HackRF и официальная
-утилита `hackrf_transfer`.
+Аппаратные проверки описываются в README соответствующего адаптера.
