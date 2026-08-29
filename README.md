@@ -24,6 +24,7 @@ gnss-device-sdk/
 
 - [HackRF](gnss-hackrf/README.md)
 - [ADALM-Pluto](gnss-pluto/README.md)
+- [UHD / USRP](gnss-uhd/README.md)
 
 ## Подключение SDK
 
