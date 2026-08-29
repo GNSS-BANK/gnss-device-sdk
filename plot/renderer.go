@@ -160,7 +160,7 @@ func (renderer *plotRenderer) Refresh() {
 	renderer.axisY.StrokeColor = colors.foreground
 	renderer.labelX.Color = colors.foreground
 	renderer.labelX.Text = snapshot.axes.X.Label
-	if renderer.labelYState.set(snapshot.axes.Y.Label, colors.foreground) {
+	if renderer.labelYState.set(snapshot.axes.Y.Label, colors.foreground, snapshot.font) {
 		renderer.labelY.Refresh()
 	}
 
@@ -362,7 +362,8 @@ func (renderer *plotRenderer) layoutHover(snapshot plotSnapshot, position fyne.P
 	y := position.Y + plotSize.Height - float32(yRatio)*plotSize.Height
 	renderer.hoverMarker.Move(fyne.NewPos(x-5, y-5))
 	renderer.hoverMarker.Resize(fyne.NewSize(10, 10))
-	textWidth := float32(math.Max(130, float64(len([]rune(renderer.hoverText.Text))*7+16)))
+	measuredText := fyne.MeasureText(renderer.hoverText.Text, renderer.hoverText.TextSize, renderer.hoverText.TextStyle)
+	textWidth := float32(math.Max(130, float64(measuredText.Width+16)))
 	textHeight := float32(28)
 	boxX := snapshot.hover.position.X + 14
 	boxY := snapshot.hover.position.Y - textHeight - 8

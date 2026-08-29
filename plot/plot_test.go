@@ -165,6 +165,56 @@ func TestThemeOptionAndControls(t *testing.T) {
 	}
 }
 
+func TestFontOptionAndGOSTResource(t *testing.T) {
+	chart, err := newPlot(WithFont(FontGOSTTypeA))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chart.snapshot().font != FontGOSTTypeA {
+		t.Fatal("WithFont did not configure GOST Type A")
+	}
+	if _, err := newPlot(WithFont(FontFamily(99))); err == nil {
+		t.Fatal("expected invalid font error")
+	}
+	if len(gostTypeAResource.Content()) == 0 {
+		t.Fatal("embedded GOST Type A resource is empty")
+	}
+
+	face, err := newVerticalTextFace(FontGOSTTypeA, 13)
+	if err != nil {
+		t.Fatalf("parse embedded GOST Type A: %v", err)
+	}
+	if _, ok := face.GlyphAdvance('А'); !ok {
+		t.Fatal("embedded GOST Type A does not contain Cyrillic glyphs")
+	}
+	_ = face.Close()
+
+	state := &verticalTextState{
+		text:  "Амплитуда",
+		color: color.White,
+		font:  FontGOSTTypeA,
+	}
+	if countOpaque(state.render(24, 200)) == 0 {
+		t.Fatal("GOST Type A vertical label produced an empty image")
+	}
+
+	window, err := NewWindow(chart, WindowConfig{
+		Title: "GOST font test",
+		Size:  NewSize(640, 360),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		window.Close()
+		test.NewApp()
+	}()
+	actual := window.(*plotWindow).application.Settings().Theme().Font(fyne.TextStyle{})
+	if actual.Name() != gostTypeAResource.Name() {
+		t.Fatalf("unexpected application font: %q", actual.Name())
+	}
+}
+
 func TestPointTextureRoundTrip(t *testing.T) {
 	points := []Point{{X: -1, Y: 2}, {X: 0.25, Y: 0.75}, {X: 2, Y: -1}}
 	encoded := encodePoints(points)

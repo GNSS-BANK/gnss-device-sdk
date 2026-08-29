@@ -57,6 +57,9 @@ func NewWindow(chart Chart, config WindowConfig) (Window, error) {
 	}
 
 	application := app.New()
+	if err := applyApplicationFont(application, plot.font); err != nil {
+		return nil, err
+	}
 	window := application.NewWindow(title)
 	view, err := newView(plot, config.Controls)
 	if err != nil {

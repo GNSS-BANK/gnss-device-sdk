@@ -36,6 +36,7 @@ func main() {
 		plot.WithMaxSeries(4),
 		plot.WithBackend(plot.BackendAuto),
 		plot.WithTheme(plot.ThemeDark),
+		plot.WithFont(plot.FontGOSTTypeA),
 		plot.WithMinSize(plot.NewSize(800, 450)),
 	)
 	if err != nil {
@@ -177,6 +178,27 @@ chart, err := plot.New(
 
 `SetTheme` остаётся доступным для программного переключения темы во время
 работы, но стандартная панель не содержит кнопок темы.
+
+## Шрифты
+
+Шрифт задаётся при создании графика и применяется ко всем подписям осей,
+делениям, легенде, tooltip и стандартной панели управления:
+
+```go
+chart, err := plot.New(
+	plot.WithFont(plot.FontGOSTTypeA),
+)
+```
+
+- `plot.FontDefault` — прежний стандартный шрифт Fyne; используется по
+  умолчанию;
+- `plot.FontGOSTTypeA` — встроенный OpenGost Type A по ГОСТ 2.304-81.
+
+Пользователю не требуется устанавливать шрифт в операционную систему или
+передавать путь к TTF. Файл `assets/fonts/OpenGostTypeA-Regular.ttf` встроен в
+модуль и распространяется по SIL Open Font License 1.1; полный текст лицензии
+находится в `assets/fonts/OFL-1.1.txt`. Использован неизменённый файл из
+[официального пакета openSUSE](https://software.opensuse.org/package/opengost-fonts).
 
 ## Стандартная панель управления
 

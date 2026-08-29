@@ -85,6 +85,17 @@ const (
 	ThemeLight
 )
 
+// FontFamily задаёт шрифт всего самостоятельного окна графика: подписей осей,
+// делений, легенды, tooltip и стандартной панели управления.
+type FontFamily uint8
+
+const (
+	// FontDefault сохраняет стандартный шрифт Fyne, использовавшийся ранее.
+	FontDefault FontFamily = iota
+	// FontGOSTTypeA использует встроенный OpenGost Type A по ГОСТ 2.304-81.
+	FontGOSTTypeA
+)
+
 // RenderBackend выбирает способ отрисовки серий.
 type RenderBackend uint8
 

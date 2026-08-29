@@ -9,7 +9,6 @@ import (
 
 	"fyne.io/fyne/v2/canvas"
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
@@ -18,13 +17,18 @@ type verticalTextState struct {
 	mu    sync.RWMutex
 	text  string
 	color color.Color
+	font  FontFamily
 }
 
 var (
-	verticalFontOnce sync.Once
-	verticalFont     *opentype.Font
-	verticalFontErr  error
+	verticalFonts [2]verticalFontCache
 )
+
+type verticalFontCache struct {
+	once sync.Once
+	font *opentype.Font
+	err  error
+}
 
 func newVerticalText() (*canvas.Raster, *verticalTextState) {
 	state := &verticalTextState{color: color.White}
@@ -32,14 +36,15 @@ func newVerticalText() (*canvas.Raster, *verticalTextState) {
 	return raster, state
 }
 
-func (state *verticalTextState) set(text string, value color.Color) bool {
+func (state *verticalTextState) set(text string, value color.Color, font FontFamily) bool {
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	if state.text == text && colorsEqual(state.color, value) {
+	if state.text == text && colorsEqual(state.color, value) && state.font == font {
 		return false
 	}
 	state.text = text
 	state.color = value
+	state.font = font
 	return true
 }
 
@@ -54,12 +59,13 @@ func (state *verticalTextState) render(width int, height int) image.Image {
 	state.mu.RLock()
 	text := state.text
 	value := state.color
+	fontFamily := state.font
 	state.mu.RUnlock()
 	if text == "" || value == nil {
 		return result
 	}
 
-	face, err := newVerticalTextFace(math.Max(8, 13*float64(width)/24))
+	face, err := newVerticalTextFace(fontFamily, math.Max(8, 13*float64(width)/24))
 	if err != nil {
 		return result
 	}
@@ -89,14 +95,23 @@ func (state *verticalTextState) render(width int, height int) image.Image {
 	return result
 }
 
-func newVerticalTextFace(size float64) (font.Face, error) {
-	verticalFontOnce.Do(func() {
-		verticalFont, verticalFontErr = opentype.Parse(goregular.TTF)
-	})
-	if verticalFontErr != nil {
-		return nil, verticalFontErr
+func newVerticalTextFace(fontFamily FontFamily, size float64) (font.Face, error) {
+	if err := validateFontFamily(fontFamily); err != nil {
+		return nil, err
 	}
-	return opentype.NewFace(verticalFont, &opentype.FaceOptions{
+	cache := &verticalFonts[int(fontFamily)]
+	cache.once.Do(func() {
+		data, err := fontData(fontFamily)
+		if err != nil {
+			cache.err = err
+			return
+		}
+		cache.font, cache.err = opentype.Parse(data)
+	})
+	if cache.err != nil {
+		return nil, cache.err
+	}
+	return opentype.NewFace(cache.font, &opentype.FaceOptions{
 		Size:    size,
 		DPI:     72,
 		Hinting: font.HintingFull,

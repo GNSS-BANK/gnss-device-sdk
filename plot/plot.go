@@ -43,6 +43,7 @@ type plotOptions struct {
 	minSize   fyne.Size
 	backend   RenderBackend
 	theme     ThemeVariant
+	font      FontFamily
 }
 
 // WithMaxPoints задаёт размер скользящего окна каждой потоковой серии.
@@ -100,6 +101,17 @@ func WithTheme(theme ThemeVariant) Option {
 	}
 }
 
+// WithFont задаёт шрифт графика и стандартной панели управления.
+func WithFont(font FontFamily) Option {
+	return func(options *plotOptions) error {
+		if err := validateFontFamily(font); err != nil {
+			return err
+		}
+		options.font = font
+		return nil
+	}
+}
+
 type axisRange struct {
 	xMin float64
 	xMax float64
@@ -120,6 +132,7 @@ type plotSnapshot struct {
 	view        axisRange
 	revision    uint64
 	theme       ThemeVariant
+	font        FontFamily
 	backend     RenderBackend
 	legend      bool
 	hover       *hoverState
@@ -136,6 +149,7 @@ type plotWidget struct {
 	series        []Series
 	axes          AxesConfig
 	theme         ThemeVariant
+	font          FontFamily
 	backend       RenderBackend
 	legendVisible bool
 	paused        bool
@@ -160,6 +174,7 @@ func newPlot(options ...Option) (*plotWidget, error) {
 		maxSeries: 8,
 		minSize:   fyne.NewSize(640, 360),
 		theme:     ThemeDark,
+		font:      FontDefault,
 	}
 	for _, option := range options {
 		if option != nil {
@@ -175,6 +190,7 @@ func newPlot(options ...Option) (*plotWidget, error) {
 			Y: AxisConfig{Label: "Y", Ticks: 5},
 		},
 		theme:         settings.theme,
+		font:          settings.font,
 		backend:       settings.backend,
 		legendVisible: true,
 		maxPoints:     settings.maxPoints,
@@ -624,6 +640,7 @@ func (plot *plotWidget) snapshot() plotSnapshot {
 		view:        plot.currentRangeLocked(),
 		revision:    plot.revision,
 		theme:       plot.theme,
+		font:        plot.font,
 		backend:     plot.backend,
 		legend:      plot.legendVisible,
 		hover:       hover,

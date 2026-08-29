@@ -10,6 +10,7 @@ func TestPublicAPIRequiresOnlyPlotImport(t *testing.T) {
 	chart, err := plot.New(
 		plot.WithMinSize(plot.NewSize(800, 450)),
 		plot.WithTheme(plot.ThemeDark),
+		plot.WithFont(plot.FontGOSTTypeA),
 		plot.WithBackend(plot.BackendAuto),
 	)
 	if err != nil {
