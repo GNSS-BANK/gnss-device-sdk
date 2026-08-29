@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"strings"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -90,6 +91,17 @@ func TestPointTextureRoundTrip(t *testing.T) {
 		decodedY := float64(y)/65535*encodedCoordinateScale - encodedCoordinateOffset
 		if math.Abs(decodedX-expected.X) > 0.0001 || math.Abs(decodedY-expected.Y) > 0.0001 {
 			t.Fatalf("point %d changed: expected=%#v got=(%f,%f)", index, expected, decodedX, decodedY)
+		}
+	}
+}
+
+func TestShaderSourcesDoNotUseReservedPackedIdentifier(t *testing.T) {
+	for name, source := range map[string]string{
+		"desktop": plotShaderSource,
+		"es":      plotShaderSourceES,
+	} {
+		if strings.Contains(source, " packed ") {
+			t.Fatalf("%s shader uses reserved GLSL identifier packed", name)
 		}
 	}
 }

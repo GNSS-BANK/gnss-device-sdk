@@ -35,8 +35,8 @@ float decode16(vec2 value) {
 }
 
 vec2 pointAt(float index) {
-    vec4 packed = texture2D(points, vec2((index + 0.5) / textureWidth, 0.5));
-    return vec2(decode16(packed.rg), decode16(packed.ba)) * 3.0 - 1.0;
+    vec4 texel = texture2D(points, vec2((index + 0.5) / textureWidth, 0.5));
+    return vec2(decode16(texel.rg), decode16(texel.ba)) * 3.0 - 1.0;
 }
 
 float segmentDistance(vec2 p, vec2 a, vec2 b) {
@@ -142,8 +142,8 @@ float decode16(vec2 value) {
 }
 
 vec2 pointAt(float index) {
-    vec4 packed = texture2D(points, vec2((index + 0.5) / textureWidth, 0.5));
-    return vec2(decode16(packed.rg), decode16(packed.ba)) * 3.0 - 1.0;
+    vec4 texel = texture2D(points, vec2((index + 0.5) / textureWidth, 0.5));
+    return vec2(decode16(texel.rg), decode16(texel.ba)) * 3.0 - 1.0;
 }
 
 float segmentDistance(vec2 p, vec2 a, vec2 b) {
