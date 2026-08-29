@@ -38,6 +38,7 @@ func main() {
 		plot.WithMaxPoints(4096),
 		plot.WithMaxSeries(4),
 		plot.WithBackend(plot.BackendAuto),
+		plot.WithTheme(plot.ThemeDark),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -60,7 +61,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	window.SetContent(chart.Object())
+	view, err := plot.NewView(chart, plot.ControlsConfig{
+		ShowPause:     true,
+		ShowZoom:      true,
+		ShowClear:     true,
+		ShowResetZoom: true,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	window.SetContent(view)
 	window.ShowAndRun()
 }
 ```
@@ -149,17 +160,53 @@ if err != nil {
 }
 
 chart.SetLegendVisible(true)
-_ = chart.SetTheme(plot.ThemeDark) // либо plot.ThemeLight
 ```
 
 При `Fixed: false` диапазон оси рассчитывается по данным автоматически.
 `HideGrid: true` скрывает сетку. Допустимо от 2 до 10 делений; значение 0
-включает 5 делений по умолчанию.
+включает 5 делений по умолчанию. Подпись оси Y отображается вертикально слева
+от значений делений. Начальная тема задаётся в конфигурации графика:
+
+```go
+chart, err := plot.New(
+	plot.WithTheme(plot.ThemeDark), // либо plot.ThemeLight
+)
+```
+
+`SetTheme` остаётся доступным для программного переключения темы во время
+работы, но стандартная панель не содержит кнопок темы.
+
+## Стандартная панель управления
+
+`NewView` объединяет график и стандартную панель. Выбор renderer (`Auto`, `GPU`,
+`CPU`) присутствует всегда. Все кнопки добавляются только по явным флагам:
+
+```go
+view, err := plot.NewView(chart, plot.ControlsConfig{
+	ShowPause:     true, // одна кнопка «Пауза»/«Продолжить»
+	ShowZoom:      true, // «Приблизить» и «Отдалить»
+	ShowClear:     true,
+	ShowResetZoom: true,
+	ZoomFactor:    0.8,  // 0 использует то же значение по умолчанию
+})
+if err != nil {
+	return err
+}
+
+window.SetContent(view)
+```
+
+Пустой `ControlsConfig{}` показывает только выбор renderer. Для графика совсем
+без панели используйте `window.SetContent(chart.Object())`.
 
 ## Масштабирование и значения точек
 
-Колесо мыши масштабирует график относительно указателя. То же самое можно
-сделать программно:
+Колесо мыши масштабирует график относительно указателя. График можно
+перетаскивать за любую точку его виджета: движение вправо/влево сдвигает X,
+вверх/вниз — Y. После ручного перемещения `ResetZoom` возвращает автоматические
+или зафиксированные в `AxesConfig` границы.
+
+Zoom доступен через кнопки стандартной панели и программно:
 
 ```go
 _ = chart.Zoom(0.8) // приблизить

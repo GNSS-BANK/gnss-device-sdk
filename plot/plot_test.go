@@ -10,6 +10,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 )
 
 func TestStreamingPauseAndLimit(t *testing.T) {
@@ -80,6 +81,90 @@ func TestAxesZoomBackendAndClear(t *testing.T) {
 	}
 }
 
+func TestDragMovesViewport(t *testing.T) {
+	chart, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	chart.Resize(fyne.NewSize(640, 360))
+	if err := chart.SetAxes(AxesConfig{
+		X: AxisConfig{Fixed: true, Min: 0, Max: 10, Ticks: 3},
+		Y: AxisConfig{Fixed: true, Min: 0, Max: 10, Ticks: 3},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	plotWidth := chart.Size().Width - plotMarginLeft - plotMarginRight
+	plotHeight := chart.Size().Height - plotMarginTop - plotMarginBottom
+	chart.Dragged(&fyne.DragEvent{Dragged: fyne.Delta{
+		DX: plotWidth / 10,
+		DY: plotHeight / 5,
+	}})
+	view := chart.snapshot().view
+	if math.Abs(view.xMin-(-1)) > 0.0001 || math.Abs(view.xMax-9) > 0.0001 {
+		t.Fatalf("unexpected X range after drag: %#v", view)
+	}
+	if math.Abs(view.yMin-2) > 0.0001 || math.Abs(view.yMax-12) > 0.0001 {
+		t.Fatalf("unexpected Y range after drag: %#v", view)
+	}
+}
+
+func TestThemeOptionAndControls(t *testing.T) {
+	chart, err := New(WithTheme(ThemeLight))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chart.snapshot().theme != ThemeLight {
+		t.Fatal("WithTheme did not configure the initial theme")
+	}
+	if _, err := New(WithTheme(ThemeVariant(99))); err == nil {
+		t.Fatal("expected invalid theme error")
+	}
+
+	minimal, err := NewControls(chart, ControlsConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(minimal.Objects) != 2 {
+		t.Fatalf("minimal controls must contain only renderer label and selector, got %d objects", len(minimal.Objects))
+	}
+
+	controls, err := NewControls(chart, ControlsConfig{
+		ShowPause:     true,
+		ShowZoom:      true,
+		ShowClear:     true,
+		ShowResetZoom: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(controls.Objects) != 8 {
+		t.Fatalf("unexpected full controls object count: %d", len(controls.Objects))
+	}
+	for _, object := range controls.Objects {
+		switch current := object.(type) {
+		case *widget.Button:
+			if current.Text == "Пауза" {
+				test.Tap(current)
+				if !chart.Paused() || current.Text != "Продолжить" {
+					t.Fatal("pause control did not toggle chart state")
+				}
+			}
+		case *widget.Select:
+			current.SetSelected("CPU")
+		}
+	}
+	if chart.Backend() != BackendCPU {
+		t.Fatal("renderer selector did not change backend")
+	}
+	if _, err := NewControls(chart, ControlsConfig{ZoomFactor: 2}); err == nil {
+		t.Fatal("expected invalid controls zoom factor error")
+	}
+	var nilChart *Plot
+	if _, err := NewControls(nilChart, ControlsConfig{}); err == nil {
+		t.Fatal("expected nil chart error")
+	}
+}
+
 func TestPointTextureRoundTrip(t *testing.T) {
 	points := []Point{{X: -1, Y: 2}, {X: 0.25, Y: 0.75}, {X: 2, Y: -1}}
 	encoded := encodePoints(points)
@@ -125,6 +210,34 @@ func TestCPURendererSupportsAllDrawModes(t *testing.T) {
 				t.Fatalf("CPU renderer produced an empty image for mode %v", mode)
 			}
 		})
+	}
+}
+
+func TestVerticalAxisLabelRaster(t *testing.T) {
+	state := &verticalTextState{
+		text:  "Амплитуда",
+		color: color.NRGBA{R: 255, G: 255, B: 255, A: 255},
+	}
+	result := state.render(24, 200)
+	if countOpaque(result) == 0 {
+		t.Fatal("vertical axis label produced an empty image")
+	}
+	minimumX, minimumY := result.Bounds().Max.X, result.Bounds().Max.Y
+	maximumX, maximumY := result.Bounds().Min.X, result.Bounds().Min.Y
+	for y := result.Bounds().Min.Y; y < result.Bounds().Max.Y; y++ {
+		for x := result.Bounds().Min.X; x < result.Bounds().Max.X; x++ {
+			_, _, _, alpha := result.At(x, y).RGBA()
+			if alpha == 0 {
+				continue
+			}
+			minimumX = min(minimumX, x)
+			maximumX = max(maximumX, x)
+			minimumY = min(minimumY, y)
+			maximumY = max(maximumY, y)
+		}
+	}
+	if maximumY-minimumY <= maximumX-minimumX {
+		t.Fatalf("axis label is not vertical: x=%d..%d y=%d..%d", minimumX, maximumX, minimumY, maximumY)
 	}
 }
 

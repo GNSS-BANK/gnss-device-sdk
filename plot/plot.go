@@ -45,6 +45,7 @@ type plotOptions struct {
 	maxSeries int
 	minSize   fyne.Size
 	backend   RenderBackend
+	theme     ThemeVariant
 }
 
 // WithMaxPoints задаёт размер скользящего окна каждой потоковой серии.
@@ -87,6 +88,17 @@ func WithBackend(backend RenderBackend) Option {
 			return errors.New("unknown plot render backend")
 		}
 		options.backend = backend
+		return nil
+	}
+}
+
+// WithTheme задаёт начальную светлую или тёмную тему графика.
+func WithTheme(theme ThemeVariant) Option {
+	return func(options *plotOptions) error {
+		if theme != ThemeDark && theme != ThemeLight {
+			return errors.New("unknown plot theme")
+		}
+		options.theme = theme
 		return nil
 	}
 }
@@ -145,6 +157,7 @@ func New(options ...Option) (*Plot, error) {
 		maxPoints: 2048,
 		maxSeries: 8,
 		minSize:   fyne.NewSize(640, 360),
+		theme:     ThemeDark,
 	}
 	for _, option := range options {
 		if option != nil {
@@ -159,7 +172,7 @@ func New(options ...Option) (*Plot, error) {
 			X: AxisConfig{Label: "X", Ticks: 5},
 			Y: AxisConfig{Label: "Y", Ticks: 5},
 		},
-		theme:         ThemeDark,
+		theme:         settings.theme,
 		backend:       settings.backend,
 		legendVisible: true,
 		maxPoints:     settings.maxPoints,

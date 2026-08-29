@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	plotMarginLeft   float32 = 72
+	plotMarginLeft   float32 = 92
 	plotMarginRight  float32 = 20
 	plotMarginTop    float32 = 20
 	plotMarginBottom float32 = 58
@@ -42,7 +42,8 @@ type plotRenderer struct {
 	tickX          []*canvas.Text
 	tickY          []*canvas.Text
 	labelX         *canvas.Text
-	labelY         *canvas.Text
+	labelY         *canvas.Raster
+	labelYState    *verticalTextState
 	raster         *canvas.Raster
 	rasterState    *cpuRasterState
 	shaders        []*canvas.Shader
@@ -109,8 +110,7 @@ func (plot *Plot) CreateRenderer() fyne.WidgetRenderer {
 	renderer.labelX = canvas.NewText("", color.Transparent)
 	renderer.labelX.Alignment = fyne.TextAlignCenter
 	renderer.labelX.TextStyle = fyne.TextStyle{Bold: true}
-	renderer.labelY = canvas.NewText("", color.Transparent)
-	renderer.labelY.TextStyle = fyne.TextStyle{Bold: true}
+	renderer.labelY, renderer.labelYState = newVerticalText()
 	renderer.objects = append(renderer.objects, renderer.labelX, renderer.labelY)
 
 	renderer.legendBox = canvas.NewRectangle(color.Transparent)
@@ -160,8 +160,9 @@ func (renderer *plotRenderer) Refresh() {
 	renderer.axisY.StrokeColor = colors.foreground
 	renderer.labelX.Color = colors.foreground
 	renderer.labelX.Text = snapshot.axes.X.Label
-	renderer.labelY.Color = colors.foreground
-	renderer.labelY.Text = snapshot.axes.Y.Label
+	if renderer.labelYState.set(snapshot.axes.Y.Label, colors.foreground) {
+		renderer.labelY.Refresh()
+	}
 
 	backend := resolveBackend(snapshot.backend)
 	if backend == BackendCPU {
@@ -236,8 +237,8 @@ func (renderer *plotRenderer) layout(size fyne.Size, snapshot plotSnapshot) {
 	renderer.layoutAxisY(snapshot, plotPosition, plotSize)
 	renderer.labelX.Move(fyne.NewPos(plotPosition.X, size.Height-25))
 	renderer.labelX.Resize(fyne.NewSize(plotSize.Width, 22))
-	renderer.labelY.Move(fyne.NewPos(8, 0))
-	renderer.labelY.Resize(fyne.NewSize(plotMarginLeft-12, 22))
+	renderer.labelY.Move(fyne.NewPos(2, plotPosition.Y))
+	renderer.labelY.Resize(fyne.NewSize(24, plotSize.Height))
 	renderer.layoutLegend(snapshot, plotPosition, plotSize)
 	renderer.layoutHover(snapshot, plotPosition, plotSize, size)
 }
@@ -286,8 +287,8 @@ func (renderer *plotRenderer) layoutAxisY(snapshot plotSnapshot, position fyne.P
 		y := position.Y + size.Height - float32(ratio)*size.Height
 		value := snapshot.view.yMin + ratio*(snapshot.view.yMax-snapshot.view.yMin)
 		renderer.tickY[index].Text = formatAxisValue(snapshot.axes.Y, value)
-		renderer.tickY[index].Move(fyne.NewPos(3, y-9))
-		renderer.tickY[index].Resize(fyne.NewSize(plotMarginLeft-9, 18))
+		renderer.tickY[index].Move(fyne.NewPos(29, y-9))
+		renderer.tickY[index].Resize(fyne.NewSize(plotMarginLeft-35, 18))
 		renderer.gridY[index].Position1 = fyne.NewPos(position.X, y)
 		renderer.gridY[index].Position2 = fyne.NewPos(position.X+size.Width, y)
 	}

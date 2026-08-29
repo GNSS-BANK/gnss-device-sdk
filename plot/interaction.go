@@ -33,6 +33,38 @@ func (plot *Plot) Scrolled(event *fyne.ScrollEvent) {
 	_ = plot.zoomAt(factor, xRatio, yRatio)
 }
 
+// Dragged перемещает видимую область вслед за указателем. После ручного
+// перемещения автоматический диапазон возобновляется через ResetZoom.
+func (plot *Plot) Dragged(event *fyne.DragEvent) {
+	if plot == nil || event == nil || (event.Dragged.DX == 0 && event.Dragged.DY == 0) {
+		return
+	}
+	size := plot.Size()
+	plotWidth := size.Width - plotMarginLeft - plotMarginRight
+	plotHeight := size.Height - plotMarginTop - plotMarginBottom
+	if plotWidth <= 0 || plotHeight <= 0 {
+		return
+	}
+
+	plot.mu.Lock()
+	current := plot.currentRangeLocked()
+	xShift := -float64(event.Dragged.DX/plotWidth) * (current.xMax - current.xMin)
+	yShift := float64(event.Dragged.DY/plotHeight) * (current.yMax - current.yMin)
+	plot.view = &axisRange{
+		xMin: current.xMin + xShift,
+		xMax: current.xMax + xShift,
+		yMin: current.yMin + yShift,
+		yMax: current.yMax + yShift,
+	}
+	plot.hover = nil
+	plot.revision++
+	plot.mu.Unlock()
+	plot.requestRefresh()
+}
+
+// DragEnd завершает жест перемещения. Состояние viewport уже обновлено в Dragged.
+func (plot *Plot) DragEnd() {}
+
 // MouseIn обновляет подсказку при входе указателя в область виджета.
 func (plot *Plot) MouseIn(event *desktop.MouseEvent) {
 	plot.MouseMoved(event)
@@ -125,4 +157,5 @@ func (plot *Plot) Capture(canvas fyne.Canvas) (image.Image, error) {
 }
 
 var _ fyne.Scrollable = (*Plot)(nil)
+var _ fyne.Draggable = (*Plot)(nil)
 var _ desktop.Hoverable = (*Plot)(nil)
