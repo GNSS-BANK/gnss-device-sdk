@@ -8,9 +8,10 @@ Go-библиотека с единообразными потоковыми RX/
 ```text
 gnss-device-sdk/
 ├── contracts.go
-└── gnss-[device]/
-    ├── rx/
-    └── tx/
+├── gnss-[device]/
+│   ├── rx/
+│   └── tx/
+└── plot/                 # отдельный Go-модуль для графиков Fyne
 ```
 
 Каждый адаптер должен реализовывать корневые интерфейсы `device.Receiver` и
@@ -25,6 +26,16 @@ gnss-device-sdk/
 - [HackRF](gnss-hackrf/README.md)
 - [ADALM-Pluto](gnss-pluto/README.md)
 - [UHD / USRP](gnss-uhd/README.md)
+
+## Графики Fyne
+
+Интерактивные GPU-графики с CPU fallback находятся в отдельном модуле
+[`plot`](plot/README.md). Благодаря границе Go-модуля Fyne не становится
+зависимостью приложений, использующих только SDR-адаптеры.
+
+```bash
+go get github.com/GNSS-BANK/gnss-device-sdk/plot
+```
 
 ## Подключение SDK
 
