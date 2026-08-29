@@ -1,8 +1,6 @@
 package plot
 
 import (
-	"errors"
-	"image"
 	"math"
 
 	"fyne.io/fyne/v2"
@@ -10,7 +8,7 @@ import (
 )
 
 // Scrolled масштабирует график относительно положения указателя.
-func (plot *Plot) Scrolled(event *fyne.ScrollEvent) {
+func (plot *plotWidget) Scrolled(event *fyne.ScrollEvent) {
 	if plot == nil || event == nil || event.Scrolled.DY == 0 {
 		return
 	}
@@ -35,7 +33,7 @@ func (plot *Plot) Scrolled(event *fyne.ScrollEvent) {
 
 // Dragged перемещает видимую область вслед за указателем. После ручного
 // перемещения автоматический диапазон возобновляется через ResetZoom.
-func (plot *Plot) Dragged(event *fyne.DragEvent) {
+func (plot *plotWidget) Dragged(event *fyne.DragEvent) {
 	if plot == nil || event == nil || (event.Dragged.DX == 0 && event.Dragged.DY == 0) {
 		return
 	}
@@ -63,15 +61,15 @@ func (plot *Plot) Dragged(event *fyne.DragEvent) {
 }
 
 // DragEnd завершает жест перемещения. Состояние viewport уже обновлено в Dragged.
-func (plot *Plot) DragEnd() {}
+func (plot *plotWidget) DragEnd() {}
 
 // MouseIn обновляет подсказку при входе указателя в область виджета.
-func (plot *Plot) MouseIn(event *desktop.MouseEvent) {
+func (plot *plotWidget) MouseIn(event *desktop.MouseEvent) {
 	plot.MouseMoved(event)
 }
 
 // MouseMoved находит ближайшую точку и показывает её точное значение.
-func (plot *Plot) MouseMoved(event *desktop.MouseEvent) {
+func (plot *plotWidget) MouseMoved(event *desktop.MouseEvent) {
 	if plot == nil || event == nil {
 		return
 	}
@@ -117,11 +115,11 @@ func (plot *Plot) MouseMoved(event *desktop.MouseEvent) {
 }
 
 // MouseOut скрывает подсказку.
-func (plot *Plot) MouseOut() {
+func (plot *plotWidget) MouseOut() {
 	plot.clearHover()
 }
 
-func (plot *Plot) clearHover() {
+func (plot *plotWidget) clearHover() {
 	plot.mu.Lock()
 	changed := plot.hover != nil
 	plot.hover = nil
@@ -138,24 +136,6 @@ func sameHover(left *hoverState, right *hoverState) bool {
 	return left.seriesID == right.seriesID && left.point == right.point && left.position == right.position
 }
 
-// Capture возвращает текущее изображение Fyne canvas. Для изображения только
-// графика передайте canvas окна, где Plot установлен корневым content.
-// Метод следует вызывать из UI-горутины Fyne.
-func (plot *Plot) Capture(canvas fyne.Canvas) (image.Image, error) {
-	if plot == nil {
-		return nil, errors.New("plot is nil")
-	}
-	if canvas == nil {
-		return nil, errors.New("fyne canvas is nil")
-	}
-	plot.Refresh()
-	result := canvas.Capture()
-	if result == nil || result.Bounds().Empty() {
-		return nil, errors.New("fyne canvas returned an empty image")
-	}
-	return result, nil
-}
-
-var _ fyne.Scrollable = (*Plot)(nil)
-var _ fyne.Draggable = (*Plot)(nil)
-var _ desktop.Hoverable = (*Plot)(nil)
+var _ fyne.Scrollable = (*plotWidget)(nil)
+var _ fyne.Draggable = (*plotWidget)(nil)
+var _ desktop.Hoverable = (*plotWidget)(nil)

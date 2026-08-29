@@ -15,7 +15,8 @@ CPU fallback.
 go get github.com/GNSS-BANK/gnss-device-sdk/plot
 ```
 
-Требуется Go 1.23 или новее. Модуль использует Fyne 2.8.1.
+Требуется Go 1.23 или новее. Модуль использует Fyne 2.8.1 только внутри
+реализации: клиентскому приложению импортировать Fyne не требуется.
 
 ## Минимальный пример
 
@@ -26,19 +27,16 @@ import (
 	"image/color"
 	"log"
 
-	"fyne.io/fyne/v2/app"
 	"github.com/GNSS-BANK/gnss-device-sdk/plot"
 )
 
 func main() {
-	application := app.New()
-	window := application.NewWindow("Спектр")
-
 	chart, err := plot.New(
 		plot.WithMaxPoints(4096),
 		plot.WithMaxSeries(4),
 		plot.WithBackend(plot.BackendAuto),
 		plot.WithTheme(plot.ThemeDark),
+		plot.WithMinSize(plot.NewSize(800, 450)),
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -61,17 +59,21 @@ func main() {
 		log.Fatal(err)
 	}
 
-	view, err := plot.NewView(chart, plot.ControlsConfig{
-		ShowPause:     true,
-		ShowZoom:      true,
-		ShowClear:     true,
-		ShowResetZoom: true,
+	window, err := plot.NewWindow(chart, plot.WindowConfig{
+		Title:          "Спектр",
+		Size:           plot.NewSize(1100, 650),
+		CenterOnScreen: true,
+		Controls: plot.ControlsConfig{
+			ShowPause:     true,
+			ShowZoom:      true,
+			ShowClear:     true,
+			ShowResetZoom: true,
+		},
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	window.SetContent(view)
 	window.ShowAndRun()
 }
 ```
@@ -178,26 +180,31 @@ chart, err := plot.New(
 
 ## Стандартная панель управления
 
-`NewView` объединяет график и стандартную панель. Выбор renderer (`Auto`, `GPU`,
-`CPU`) присутствует всегда. Все кнопки добавляются только по явным флагам:
+`NewWindow` самостоятельно создаёт Fyne-приложение, окно, график и стандартную
+панель. Выбор renderer (`Auto`, `GPU`, `CPU`) присутствует всегда. Все кнопки
+добавляются только по явным флагам:
 
 ```go
-view, err := plot.NewView(chart, plot.ControlsConfig{
-	ShowPause:     true, // одна кнопка «Пауза»/«Продолжить»
-	ShowZoom:      true, // «Приблизить» и «Отдалить»
-	ShowClear:     true,
-	ShowResetZoom: true,
-	ZoomFactor:    0.8,  // 0 использует то же значение по умолчанию
+window, err := plot.NewWindow(chart, plot.WindowConfig{
+	Title: "Realtime plot",
+	Size:  plot.NewSize(1100, 650),
+	Controls: plot.ControlsConfig{
+		ShowPause:     true, // одна кнопка «Пауза»/«Продолжить»
+		ShowZoom:      true, // «Приблизить» и «Отдалить»
+		ShowClear:     true,
+		ShowResetZoom: true,
+		ZoomFactor:    0.8, // 0 использует значение по умолчанию
+	},
 })
 if err != nil {
 	return err
 }
 
-window.SetContent(view)
+window.ShowAndRun()
 ```
 
-Пустой `ControlsConfig{}` показывает только выбор renderer. Для графика совсем
-без панели используйте `window.SetContent(chart.Object())`.
+Пустой `ControlsConfig{}` показывает только выбор renderer. В пользовательском
+коде нет `fyne.App`, `fyne.Window`, `fyne.CanvasObject` или контейнеров Fyne.
 
 ## Масштабирование и значения точек
 
@@ -219,12 +226,12 @@ chart.ResetZoom()
 
 ## Получение изображения
 
-`Capture` возвращает `image.Image` с текущим состоянием Fyne canvas. Если
-нужно изображение только графика, установите его единственным content окна.
-Вызывать `Capture` следует из UI-горутины, например из обработчика кнопки:
+`Window.Capture` возвращает стандартный `image.Image` с текущим состоянием
+окна: панелью, графиком, осями, легендой и tooltip. Fyne canvas при этом остаётся
+внутренней деталью реализации:
 
 ```go
-image, err := chart.Capture(window.Canvas())
+image, err := window.Capture()
 if err != nil {
 	return err
 }
@@ -281,7 +288,6 @@ _ = chart.SetBackend(plot.BackendCPU)
 
 ```go
 type Chart interface {
-	Object() fyne.CanvasObject
 	SetSeries([]Series) error
 	AddSeries(Series) error
 	RemoveSeries(seriesID string) bool
@@ -298,14 +304,32 @@ type Chart interface {
 	SetTheme(ThemeVariant) error
 	SetBackend(RenderBackend) error
 	Backend() RenderBackend
-	Capture(fyne.Canvas) (image.Image, error)
+}
+
+type Window interface {
+	ShowAndRun()
+	Close()
+	SetOnClosed(func())
+	Capture() (image.Image, error)
 }
 ```
 
+Все экспортируемые типы модуля принадлежат `plot` либо стандартной библиотеке
+Go. Конкретный Fyne-виджет не экспортируется, поэтому пользовательскому коду не
+нужны импорты `fyne.io/fyne/v2` даже для создания окна, панели управления и
+получения изображения.
+
 ## Проверка модуля
 
+Автоматические проверки без дисплея выполняются с software-драйвером Fyne:
+
 ```bash
-go test ./...
-go vet ./...
-go build ./...
+go test -tags ci ./...
+go vet -tags ci ./...
+go build -tags ci ./...
 ```
+
+Обычную desktop-сборку проверяйте командой `go build ./...` в окружении со
+стандартными системными зависимостями Fyne: рабочим C-компилятором, CGO и
+OpenGL/OpenGL ES. Эти зависимости остаются внутренней деталью сборки модуля и
+не требуют импортов Fyne в клиентском коде.

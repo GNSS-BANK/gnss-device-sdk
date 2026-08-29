@@ -1,5 +1,5 @@
-// Package plot предоставляет интерактивные GPU-графики с CPU fallback для
-// приложений Fyne.
+// Package plot предоставляет самостоятельные интерактивные GPU-графики с CPU
+// fallback. Оконная реализация скрыта за собственным публичным API пакета.
 package plot
 
 import (
@@ -15,6 +15,18 @@ const (
 	MaxGPUPoints = 4096
 	maxAxisTicks = 10
 )
+
+// Size задаёт логический размер графика или окна без зависимости публичного
+// API от Fyne.
+type Size struct {
+	Width  float32
+	Height float32
+}
+
+// NewSize создаёт размер в логических пикселях.
+func NewSize(width float32, height float32) Size {
+	return Size{Width: width, Height: height}
+}
 
 // Point — одна точка графика.
 type Point struct {

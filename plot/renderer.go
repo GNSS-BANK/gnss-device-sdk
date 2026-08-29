@@ -31,7 +31,7 @@ type palette struct {
 }
 
 type plotRenderer struct {
-	plot *Plot
+	plot *plotWidget
 
 	background     *canvas.Rectangle
 	plotBackground *canvas.Rectangle
@@ -61,7 +61,7 @@ type plotRenderer struct {
 }
 
 // CreateRenderer реализует fyne.Widget и создаёт GPU/CPU renderer графика.
-func (plot *Plot) CreateRenderer() fyne.WidgetRenderer {
+func (plot *plotWidget) CreateRenderer() fyne.WidgetRenderer {
 	renderer := &plotRenderer{plot: plot}
 	renderer.background = canvas.NewRectangle(color.Transparent)
 	renderer.plotBackground = canvas.NewRectangle(color.Transparent)

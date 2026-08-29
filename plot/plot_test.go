@@ -14,7 +14,7 @@ import (
 )
 
 func TestStreamingPauseAndLimit(t *testing.T) {
-	chart, err := New(WithMaxPoints(3))
+	chart, err := newPlot(WithMaxPoints(3))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestStreamingPauseAndLimit(t *testing.T) {
 }
 
 func TestAxesZoomBackendAndClear(t *testing.T) {
-	chart, err := New(WithBackend(BackendCPU))
+	chart, err := newPlot(WithBackend(BackendCPU))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestAxesZoomBackendAndClear(t *testing.T) {
 }
 
 func TestDragMovesViewport(t *testing.T) {
-	chart, err := New()
+	chart, err := newPlot()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,18 +109,18 @@ func TestDragMovesViewport(t *testing.T) {
 }
 
 func TestThemeOptionAndControls(t *testing.T) {
-	chart, err := New(WithTheme(ThemeLight))
+	chart, err := newPlot(WithTheme(ThemeLight))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if chart.snapshot().theme != ThemeLight {
 		t.Fatal("WithTheme did not configure the initial theme")
 	}
-	if _, err := New(WithTheme(ThemeVariant(99))); err == nil {
+	if _, err := newPlot(WithTheme(ThemeVariant(99))); err == nil {
 		t.Fatal("expected invalid theme error")
 	}
 
-	minimal, err := NewControls(chart, ControlsConfig{})
+	minimal, err := newControls(chart, ControlsConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestThemeOptionAndControls(t *testing.T) {
 		t.Fatalf("minimal controls must contain only renderer label and selector, got %d objects", len(minimal.Objects))
 	}
 
-	controls, err := NewControls(chart, ControlsConfig{
+	controls, err := newControls(chart, ControlsConfig{
 		ShowPause:     true,
 		ShowZoom:      true,
 		ShowClear:     true,
@@ -156,11 +156,11 @@ func TestThemeOptionAndControls(t *testing.T) {
 	if chart.Backend() != BackendCPU {
 		t.Fatal("renderer selector did not change backend")
 	}
-	if _, err := NewControls(chart, ControlsConfig{ZoomFactor: 2}); err == nil {
+	if _, err := newControls(chart, ControlsConfig{ZoomFactor: 2}); err == nil {
 		t.Fatal("expected invalid controls zoom factor error")
 	}
-	var nilChart *Plot
-	if _, err := NewControls(nilChart, ControlsConfig{}); err == nil {
+	var nilChart *plotWidget
+	if _, err := newControls(nilChart, ControlsConfig{}); err == nil {
 		t.Fatal("expected nil chart error")
 	}
 }
@@ -244,7 +244,7 @@ func TestVerticalAxisLabelRaster(t *testing.T) {
 func TestRendererSelectsCPUAndGPU(t *testing.T) {
 	for _, backend := range []RenderBackend{BackendCPU, BackendGPU} {
 		t.Run(backendName(backend), func(t *testing.T) {
-			chart, err := New(WithBackend(backend), WithMaxSeries(2))
+			chart, err := newPlot(WithBackend(backend), WithMaxSeries(2))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -271,7 +271,7 @@ func TestRendererSelectsCPUAndGPU(t *testing.T) {
 }
 
 func TestHoverAndCapture(t *testing.T) {
-	chart, err := New(WithBackend(BackendCPU))
+	chart, err := newPlot(WithBackend(BackendCPU))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,10 +299,15 @@ func TestHoverAndCapture(t *testing.T) {
 		t.Fatal("MouseOut did not clear hover")
 	}
 
-	canvas := test.NewCanvas()
-	canvas.SetContent(chart)
-	canvas.Resize(fyne.NewSize(640, 360))
-	result, err := chart.Capture(canvas)
+	window, err := NewWindow(chart, WindowConfig{
+		Title: "Capture test",
+		Size:  NewSize(640, 360),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer window.Close()
+	result, err := window.Capture()
 	if err != nil {
 		t.Fatal(err)
 	}

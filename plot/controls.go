@@ -23,9 +23,7 @@ type ControlsConfig struct {
 	ZoomFactor float64
 }
 
-// NewControls создаёт стандартную панель графика. Renderer selector выводится
-// всегда, остальные кнопки включаются через ControlsConfig.
-func NewControls(chart Chart, config ControlsConfig) (*fyne.Container, error) {
+func newControls(chart Chart, config ControlsConfig) (*fyne.Container, error) {
 	if chartIsNil(chart) {
 		return nil, errors.New("plot chart is nil")
 	}
@@ -79,14 +77,12 @@ func NewControls(chart Chart, config ControlsConfig) (*fyne.Container, error) {
 	return container.NewHBox(objects...), nil
 }
 
-// NewView объединяет стандартную панель и график в готовый Fyne-контейнер.
-// Для графика без панели используйте chart.Object().
-func NewView(chart Chart, config ControlsConfig) (*fyne.Container, error) {
-	controls, err := NewControls(chart, config)
+func newView(chart *plotWidget, config ControlsConfig) (*fyne.Container, error) {
+	controls, err := newControls(chart, config)
 	if err != nil {
 		return nil, err
 	}
-	return container.NewBorder(controls, nil, nil, nil, chart.Object()), nil
+	return container.NewBorder(controls, nil, nil, nil, chart), nil
 }
 
 func pauseButtonText(paused bool) string {

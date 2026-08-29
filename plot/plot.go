@@ -3,7 +3,6 @@ package plot
 import (
 	"errors"
 	"fmt"
-	"image"
 	"math"
 	"slices"
 	"sort"
@@ -17,7 +16,6 @@ import (
 
 // Chart — публичный интерфейс интерактивного графика.
 type Chart interface {
-	Object() fyne.CanvasObject
 	SetSeries([]Series) error
 	AddSeries(Series) error
 	RemoveSeries(seriesID string) bool
@@ -34,10 +32,9 @@ type Chart interface {
 	SetTheme(ThemeVariant) error
 	SetBackend(RenderBackend) error
 	Backend() RenderBackend
-	Capture(fyne.Canvas) (image.Image, error)
 }
 
-// Option настраивает создаваемый Plot.
+// Option настраивает создаваемый график.
 type Option func(*plotOptions) error
 
 type plotOptions struct {
@@ -70,13 +67,13 @@ func WithMaxSeries(maxSeries int) Option {
 	}
 }
 
-// WithMinSize задаёт минимальный размер Fyne-виджета.
-func WithMinSize(size fyne.Size) Option {
+// WithMinSize задаёт минимальный размер графика.
+func WithMinSize(size Size) Option {
 	return func(options *plotOptions) error {
 		if size.Width <= 0 || size.Height <= 0 {
 			return errors.New("plot minimum size must be positive")
 		}
-		options.minSize = size
+		options.minSize = fyne.NewSize(size.Width, size.Height)
 		return nil
 	}
 }
@@ -130,8 +127,9 @@ type plotSnapshot struct {
 	minimumSize fyne.Size
 }
 
-// Plot — реализация Chart и пользовательский Fyne-виджет.
-type Plot struct {
+// plotWidget — внутренняя реализация Chart и Fyne-виджет.
+// Конкретный тип не экспортируется, чтобы Fyne не попадал в публичный API.
+type plotWidget struct {
 	widget.BaseWidget
 
 	mu            sync.RWMutex
@@ -152,7 +150,11 @@ type Plot struct {
 }
 
 // New создаёт пустой интерактивный график. BackendAuto используется по умолчанию.
-func New(options ...Option) (*Plot, error) {
+func New(options ...Option) (Chart, error) {
+	return newPlot(options...)
+}
+
+func newPlot(options ...Option) (*plotWidget, error) {
 	settings := plotOptions{
 		maxPoints: 2048,
 		maxSeries: 8,
@@ -167,7 +169,7 @@ func New(options ...Option) (*Plot, error) {
 		}
 	}
 
-	plot := &Plot{
+	plot := &plotWidget{
 		axes: AxesConfig{
 			X: AxisConfig{Label: "X", Ticks: 5},
 			Y: AxisConfig{Label: "Y", Ticks: 5},
@@ -184,13 +186,8 @@ func New(options ...Option) (*Plot, error) {
 	return plot, nil
 }
 
-// Object возвращает Plot как обычный объект canvas Fyne.
-func (plot *Plot) Object() fyne.CanvasObject {
-	return plot
-}
-
 // SetSeries полностью заменяет набор серий.
-func (plot *Plot) SetSeries(series []Series) error {
+func (plot *plotWidget) SetSeries(series []Series) error {
 	if plot == nil {
 		return errors.New("plot is nil")
 	}
@@ -230,7 +227,7 @@ func (plot *Plot) SetSeries(series []Series) error {
 }
 
 // AddSeries добавляет одну серию.
-func (plot *Plot) AddSeries(series Series) error {
+func (plot *plotWidget) AddSeries(series Series) error {
 	if plot == nil {
 		return errors.New("plot is nil")
 	}
@@ -262,7 +259,7 @@ func (plot *Plot) AddSeries(series Series) error {
 }
 
 // RemoveSeries удаляет серию по идентификатору.
-func (plot *Plot) RemoveSeries(seriesID string) bool {
+func (plot *plotWidget) RemoveSeries(seriesID string) bool {
 	if plot == nil {
 		return false
 	}
@@ -283,7 +280,7 @@ func (plot *Plot) RemoveSeries(seriesID string) bool {
 }
 
 // Append добавляет точки в потоковую серию. X должен монотонно не убывать.
-func (plot *Plot) Append(seriesID string, points ...Point) error {
+func (plot *plotWidget) Append(seriesID string, points ...Point) error {
 	if plot == nil {
 		return errors.New("plot is nil")
 	}
@@ -330,7 +327,7 @@ func (plot *Plot) Append(seriesID string, points ...Point) error {
 }
 
 // Clear очищает данные всех серий, сохраняя их настройки.
-func (plot *Plot) Clear() {
+func (plot *plotWidget) Clear() {
 	if plot == nil {
 		return
 	}
@@ -350,7 +347,7 @@ func (plot *Plot) Clear() {
 }
 
 // ClearSeries очищает данные одной серии.
-func (plot *Plot) ClearSeries(seriesID string) bool {
+func (plot *plotWidget) ClearSeries(seriesID string) bool {
 	if plot == nil {
 		return false
 	}
@@ -373,7 +370,7 @@ func (plot *Plot) ClearSeries(seriesID string) bool {
 }
 
 // Pause замораживает отображаемые данные. Append продолжает принимать точки.
-func (plot *Plot) Pause() {
+func (plot *plotWidget) Pause() {
 	if plot == nil {
 		return
 	}
@@ -392,7 +389,7 @@ func (plot *Plot) Pause() {
 }
 
 // Resume показывает актуальные накопленные данные и продолжает обновления.
-func (plot *Plot) Resume() {
+func (plot *plotWidget) Resume() {
 	if plot == nil {
 		return
 	}
@@ -409,7 +406,7 @@ func (plot *Plot) Resume() {
 }
 
 // Paused сообщает, заморожено ли отображение.
-func (plot *Plot) Paused() bool {
+func (plot *plotWidget) Paused() bool {
 	if plot == nil {
 		return false
 	}
@@ -419,11 +416,11 @@ func (plot *Plot) Paused() bool {
 }
 
 // Zoom изменяет масштаб относительно центра. factor < 1 приближает, factor > 1 отдаляет.
-func (plot *Plot) Zoom(factor float64) error {
+func (plot *plotWidget) Zoom(factor float64) error {
 	return plot.zoomAt(factor, 0.5, 0.5)
 }
 
-func (plot *Plot) zoomAt(factor float64, xRatio float64, yRatio float64) error {
+func (plot *plotWidget) zoomAt(factor float64, xRatio float64, yRatio float64) error {
 	if plot == nil {
 		return errors.New("plot is nil")
 	}
@@ -453,7 +450,7 @@ func (plot *Plot) zoomAt(factor float64, xRatio float64, yRatio float64) error {
 }
 
 // ResetZoom возвращает границы из AxesConfig или автоматический диапазон.
-func (plot *Plot) ResetZoom() {
+func (plot *plotWidget) ResetZoom() {
 	if plot == nil {
 		return
 	}
@@ -465,7 +462,7 @@ func (plot *Plot) ResetZoom() {
 }
 
 // SetLegendVisible показывает или скрывает легенду.
-func (plot *Plot) SetLegendVisible(visible bool) {
+func (plot *plotWidget) SetLegendVisible(visible bool) {
 	if plot == nil {
 		return
 	}
@@ -476,7 +473,7 @@ func (plot *Plot) SetLegendVisible(visible bool) {
 }
 
 // SetAxes применяет настройки осей и сбрасывает текущий zoom.
-func (plot *Plot) SetAxes(axes AxesConfig) error {
+func (plot *plotWidget) SetAxes(axes AxesConfig) error {
 	if plot == nil {
 		return errors.New("plot is nil")
 	}
@@ -499,7 +496,7 @@ func (plot *Plot) SetAxes(axes AxesConfig) error {
 }
 
 // SetTheme переключает светлую или тёмную тему самого графика.
-func (plot *Plot) SetTheme(theme ThemeVariant) error {
+func (plot *plotWidget) SetTheme(theme ThemeVariant) error {
 	if plot == nil {
 		return errors.New("plot is nil")
 	}
@@ -514,7 +511,7 @@ func (plot *Plot) SetTheme(theme ThemeVariant) error {
 }
 
 // SetBackend переключает GPU/CPU renderer без изменения данных и масштаба.
-func (plot *Plot) SetBackend(backend RenderBackend) error {
+func (plot *plotWidget) SetBackend(backend RenderBackend) error {
 	if plot == nil {
 		return errors.New("plot is nil")
 	}
@@ -530,7 +527,7 @@ func (plot *Plot) SetBackend(backend RenderBackend) error {
 
 // Backend возвращает выбранный режим renderer. BackendAuto разрешается в
 // конкретный GPU/CPU backend во время Refresh.
-func (plot *Plot) Backend() RenderBackend {
+func (plot *plotWidget) Backend() RenderBackend {
 	if plot == nil {
 		return BackendAuto
 	}
@@ -539,7 +536,7 @@ func (plot *Plot) Backend() RenderBackend {
 	return plot.backend
 }
 
-func (plot *Plot) normalizeSeries(series Series) (Series, error) {
+func (plot *plotWidget) normalizeSeries(series Series) (Series, error) {
 	series.ID = strings.TrimSpace(series.ID)
 	series.Name = strings.TrimSpace(series.Name)
 	if series.ID == "" {
@@ -578,7 +575,7 @@ func (plot *Plot) normalizeSeries(series Series) (Series, error) {
 	return series, nil
 }
 
-func (plot *Plot) seriesIndexLocked(seriesID string) int {
+func (plot *plotWidget) seriesIndexLocked(seriesID string) int {
 	for index := range plot.series {
 		if plot.series[index].ID == seriesID {
 			return index
@@ -587,7 +584,7 @@ func (plot *Plot) seriesIndexLocked(seriesID string) int {
 	return -1
 }
 
-func (plot *Plot) requestRefresh() {
+func (plot *plotWidget) requestRefresh() {
 	if plot == nil || !plot.refreshQueued.CompareAndSwap(false, true) {
 		return
 	}
@@ -603,7 +600,7 @@ func (plot *Plot) requestRefresh() {
 	})
 }
 
-func (plot *Plot) snapshot() plotSnapshot {
+func (plot *plotWidget) snapshot() plotSnapshot {
 	plot.mu.RLock()
 	defer plot.mu.RUnlock()
 
@@ -635,7 +632,7 @@ func (plot *Plot) snapshot() plotSnapshot {
 	}
 }
 
-func (plot *Plot) currentRangeLocked() axisRange {
+func (plot *plotWidget) currentRangeLocked() axisRange {
 	if plot.view != nil {
 		return *plot.view
 	}
@@ -678,4 +675,4 @@ func normalizedRange(minimum float64, maximum float64) (float64, float64) {
 	return minimum - padding, maximum + padding
 }
 
-var _ Chart = (*Plot)(nil)
+var _ Chart = (*plotWidget)(nil)
