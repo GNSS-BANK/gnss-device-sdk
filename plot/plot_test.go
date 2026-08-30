@@ -1,9 +1,11 @@
 package plot
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -41,6 +43,69 @@ func TestStreamingPauseAndLimit(t *testing.T) {
 	}
 	if err := chart.Append("signal", Point{X: 4, Y: 0}); err == nil {
 		t.Fatal("expected monotonically increasing X error")
+	}
+}
+
+func TestReplacePointsPreservesViewportAndPause(t *testing.T) {
+	chart, err := newPlot(WithMaxPoints(4), WithBackend(BackendCPU))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := chart.SetSeries([]Series{{
+		ID:     "spectrum",
+		Name:   "FFT",
+		Mode:   DrawLine,
+		Points: []Point{{X: 0, Y: -80}, {X: 1, Y: -70}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := chart.Zoom(0.5); err != nil {
+		t.Fatal(err)
+	}
+	zoomed := chart.snapshot().view
+
+	firstFrame := []Point{{X: 0, Y: -90}, {X: 1, Y: -40}, {X: 2, Y: -85}}
+	if err := chart.ReplacePoints("spectrum", firstFrame...); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := chart.snapshot()
+	if snapshot.view != zoomed {
+		t.Fatalf("ReplacePoints reset viewport: before=%#v after=%#v", zoomed, snapshot.view)
+	}
+	if !slices.Equal(snapshot.series[0].Points, firstFrame) {
+		t.Fatalf("unexpected replacement frame: %#v", snapshot.series[0].Points)
+	}
+
+	chart.Pause()
+	secondFrame := []Point{{X: 0, Y: -100}, {X: 1, Y: -30}, {X: 2, Y: -95}}
+	if err := chart.ReplacePoints("spectrum", secondFrame...); err != nil {
+		t.Fatal(err)
+	}
+	if frozen := chart.snapshot().series[0].Points; !slices.Equal(frozen, firstFrame) {
+		t.Fatalf("paused chart changed visible frame: %#v", frozen)
+	}
+	chart.Resume()
+	if current := chart.snapshot().series[0].Points; !slices.Equal(current, secondFrame) {
+		t.Fatalf("resume did not reveal latest frame: %#v", current)
+	}
+
+	if err := chart.ReplacePoints("spectrum", Point{X: 2}, Point{X: 1}); err == nil {
+		t.Fatal("expected unordered replacement error")
+	}
+	if err := chart.ReplacePoints("spectrum", make([]Point, 5)...); err == nil {
+		t.Fatal("expected replacement limit error")
+	}
+}
+
+func TestMaximumPointConfigurationMatchesShaderCapacity(t *testing.T) {
+	if MaxGPUPoints != 16384 {
+		t.Fatalf("unexpected maximum point capacity: %d", MaxGPUPoints)
+	}
+	if _, err := newPlot(WithMaxPoints(MaxGPUPoints)); err != nil {
+		t.Fatalf("maximum point capacity was rejected: %v", err)
+	}
+	if _, err := newPlot(WithMaxPoints(MaxGPUPoints + 1)); err == nil {
+		t.Fatal("expected point capacity above shader limit to be rejected")
 	}
 }
 
@@ -297,12 +362,16 @@ func TestPointTextureRoundTrip(t *testing.T) {
 }
 
 func TestShaderSourcesDoNotUseReservedPackedIdentifier(t *testing.T) {
+	searchLoop := fmt.Sprintf("for (int i = 0; i < %d; i++)", maxGPUPointSearchSteps)
 	for name, source := range map[string]string{
 		"desktop": plotShaderSource,
 		"es":      plotShaderSourceES,
 	} {
 		if strings.Contains(source, " packed ") {
 			t.Fatalf("%s shader uses reserved GLSL identifier packed", name)
+		}
+		if !strings.Contains(source, searchLoop) {
+			t.Fatalf("%s shader search does not support MaxGPUPoints=%d", name, MaxGPUPoints)
 		}
 	}
 }

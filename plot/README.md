@@ -32,7 +32,7 @@ import (
 
 func main() {
 	chart, err := plot.New(
-		plot.WithMaxPoints(4096),
+		plot.WithMaxPoints(16384),
 		plot.WithMaxSeries(4),
 		plot.WithBackend(plot.BackendAuto),
 		plot.WithTheme(plot.ThemeDark),
@@ -116,8 +116,24 @@ go func() {
 Значения X внутри потоковой серии должны идти по неубыванию. Когда достигнут
 лимит `WithMaxPoints`, старые точки автоматически удаляются.
 
+Для FFT, спектра и других полностью заменяемых кадров используйте
+`ReplacePoints`. Он атомарно меняет только данные выбранной серии, не сбрасывает
+zoom и не создаёт промежуточный пустой кадр:
+
+```go
+frame := calculateFFT()
+if err := chart.ReplacePoints("spectrum", frame...); err != nil {
+	return err
+}
+```
+
+Точки одного кадра должны иметь неубывающий X, а их количество не должно
+превышать настроенный `WithMaxPoints`. В отличие от `SetSeries`, метод не
+пересортировывает входной массив: это исключает лишнюю работу на каждом кадре.
+
 Пауза замораживает только отображение. Новые точки продолжают накапливаться и
-появятся после `Resume`:
+новые заменяющие кадры продолжают приниматься; актуальные данные появятся после
+`Resume`:
 
 ```go
 chart.Pause()
@@ -305,10 +321,13 @@ _ = chart.SetBackend(plot.BackendCPU)
 
 ## Ограничения
 
-- не более 4096 точек на одну серию;
+- не более 16384 точек на одну серию;
 - не более 16 одновременно зарегистрированных серий;
 - по умолчанию: 2048 точек и 8 серий;
-- `Append` принимает только неубывающий X;
+- `Append` и `ReplacePoints` принимают только неубывающий X;
+- GPU backend хранит точки серии в однострочной текстуре; для полного лимита
+  `16384` целевой GPU должен поддерживать такую ширину текстуры. Для более
+  старого GPU задайте меньший `WithMaxPoints` либо используйте CPU backend;
 - GPU-ускорение относится к отрисовке серий; оси, подписи, легенда и tooltip —
   стандартные canvas-примитивы Fyne и выводятся активным painter Fyne.
 
@@ -322,6 +341,7 @@ type Chart interface {
 	SetSeries([]Series) error
 	AddSeries(Series) error
 	RemoveSeries(seriesID string) bool
+	ReplacePoints(seriesID string, points ...Point) error
 	Append(seriesID string, points ...Point) error
 	Clear()
 	ClearSeries(seriesID string) bool

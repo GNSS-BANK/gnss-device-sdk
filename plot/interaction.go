@@ -2,6 +2,7 @@ package plot
 
 import (
 	"math"
+	"sort"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/driver/desktop"
@@ -88,8 +89,18 @@ func (plot *plotWidget) MouseMoved(event *desktop.MouseEvent) {
 
 	bestDistance := math.Inf(1)
 	var best *hoverState
+	hitRadius := float64(metrics.value(14))
+	cursorXRatio := float64((position.X - metrics.marginLeft) / plotWidth)
+	cursorX := snapshot.view.xMin + cursorXRatio*(snapshot.view.xMax-snapshot.view.xMin)
+	xTolerance := hitRadius / float64(plotWidth) * (snapshot.view.xMax - snapshot.view.xMin)
 	for _, series := range snapshot.series {
-		for _, point := range series.Points {
+		start := sort.Search(len(series.Points), func(index int) bool {
+			return series.Points[index].X >= cursorX-xTolerance
+		})
+		end := sort.Search(len(series.Points), func(index int) bool {
+			return series.Points[index].X > cursorX+xTolerance
+		})
+		for _, point := range series.Points[start:end] {
 			xRatio := (point.X - snapshot.view.xMin) / (snapshot.view.xMax - snapshot.view.xMin)
 			yRatio := (point.Y - snapshot.view.yMin) / (snapshot.view.yMax - snapshot.view.yMin)
 			if xRatio < 0 || xRatio > 1 || yRatio < 0 || yRatio > 1 {
@@ -104,7 +115,7 @@ func (plot *plotWidget) MouseMoved(event *desktop.MouseEvent) {
 			}
 		}
 	}
-	if bestDistance > float64(metrics.value(14)) {
+	if bestDistance > hitRadius {
 		best = nil
 	}
 

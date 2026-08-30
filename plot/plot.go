@@ -19,6 +19,7 @@ type Chart interface {
 	SetSeries([]Series) error
 	AddSeries(Series) error
 	RemoveSeries(seriesID string) bool
+	ReplacePoints(seriesID string, points ...Point) error
 	Append(seriesID string, points ...Point) error
 	Clear()
 	ClearSeries(seriesID string) bool
@@ -312,6 +313,41 @@ func (plot *plotWidget) RemoveSeries(seriesID string) bool {
 	return true
 }
 
+// ReplacePoints атомарно заменяет данные существующей серии, сохраняя её
+// настройки и текущий viewport. Метод предназначен для FFT-кадров и других
+// наборов, которые полностью обновляются. X должен монотонно не убывать.
+func (plot *plotWidget) ReplacePoints(seriesID string, points ...Point) error {
+	if plot == nil {
+		return errors.New("plot is nil")
+	}
+	if len(points) > plot.maxPoints {
+		return fmt.Errorf("plot replacement contains %d points, maximum is %d", len(points), plot.maxPoints)
+	}
+	if err := validateOrderedPoints(points); err != nil {
+		return err
+	}
+
+	replacement := slices.Clone(points)
+	seriesID = strings.TrimSpace(seriesID)
+	plot.mu.Lock()
+	index := plot.seriesIndexLocked(seriesID)
+	if index < 0 {
+		plot.mu.Unlock()
+		return fmt.Errorf("plot series %q not found", seriesID)
+	}
+	plot.series[index].Points = replacement
+	paused := plot.paused
+	if !paused {
+		plot.hover = nil
+		plot.revision++
+	}
+	plot.mu.Unlock()
+	if !paused {
+		plot.requestRefresh()
+	}
+	return nil
+}
+
 // Append добавляет точки в потоковую серию. X должен монотонно не убывать.
 func (plot *plotWidget) Append(seriesID string, points ...Point) error {
 	if plot == nil {
@@ -320,15 +356,8 @@ func (plot *plotWidget) Append(seriesID string, points ...Point) error {
 	if len(points) == 0 {
 		return nil
 	}
-	for _, point := range points {
-		if err := validatePoint(point); err != nil {
-			return err
-		}
-	}
-	for index := 1; index < len(points); index++ {
-		if points[index].X < points[index-1].X {
-			return errors.New("streaming plot points must have monotonically increasing X")
-		}
+	if err := validateOrderedPoints(points); err != nil {
+		return err
 	}
 
 	seriesID = strings.TrimSpace(seriesID)
@@ -433,9 +462,24 @@ func (plot *plotWidget) Resume() {
 	}
 	plot.paused = false
 	plot.frozen = nil
+	plot.hover = nil
 	plot.revision++
 	plot.mu.Unlock()
 	plot.requestRefresh()
+}
+
+func validateOrderedPoints(points []Point) error {
+	for _, point := range points {
+		if err := validatePoint(point); err != nil {
+			return err
+		}
+	}
+	for index := 1; index < len(points); index++ {
+		if points[index].X < points[index-1].X {
+			return errors.New("plot points must have monotonically increasing X")
+		}
+	}
+	return nil
 }
 
 // Paused сообщает, заморожено ли отображение.

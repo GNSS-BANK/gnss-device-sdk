@@ -49,7 +49,10 @@ float segmentDistance(vec2 p, vec2 a, vec2 b) {
 float lowerBound(float x) {
     float lo = 0.0;
     float hi = pointCount;
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 14; i++) {
+		if (lo >= hi) {
+			break;
+		}
         float mid = floor((lo + hi) * 0.5);
         if (mid >= hi) {
             continue;
@@ -156,7 +159,10 @@ float segmentDistance(vec2 p, vec2 a, vec2 b) {
 float lowerBound(float x) {
     float lo = 0.0;
     float hi = pointCount;
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < 14; i++) {
+		if (lo >= hi) {
+			break;
+		}
         float mid = floor((lo + hi) * 0.5);
         if (mid >= hi) {
             continue;

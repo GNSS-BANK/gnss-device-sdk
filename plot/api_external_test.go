@@ -19,7 +19,8 @@ func TestPublicAPIRequiresOnlyPlotImport(t *testing.T) {
 	}
 	var publicChart plot.Chart = chart
 	var windowConstructor func(plot.Chart, plot.WindowConfig) (plot.Window, error) = plot.NewWindow
-	if publicChart == nil || windowConstructor == nil {
+	var replacePoints func(string, ...plot.Point) error = publicChart.ReplacePoints
+	if publicChart == nil || windowConstructor == nil || replacePoints == nil {
 		t.Fatal("standalone plot API is not available")
 	}
 }
