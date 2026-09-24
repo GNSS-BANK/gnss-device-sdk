@@ -135,10 +135,10 @@ func captureRX(
 func isRecoverableReadError(err error) bool {
 	return errors.Is(err, uhd.ErrRxMetadataTimeout) ||
 		errors.Is(err, uhd.ErrRxMetadataOverflow) ||
-		errors.Is(err, sdrlib.ErrIO) ||
-		errors.Is(err, sdrlib.ErrUSB) ||
-		errors.Is(err, sdrlib.ErrOS) ||
-		errors.Is(err, sdrlib.ErrRuntime) ||
+		errors.Is(err, uhd.ErrIO) ||
+		errors.Is(err, uhd.ErrUSB) ||
+		errors.Is(err, uhd.ErrOS) ||
+		errors.Is(err, uhd.ErrRuntime) ||
 		errors.Is(err, io.EOF)
 }
 
