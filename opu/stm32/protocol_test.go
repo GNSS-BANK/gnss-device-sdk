@@ -31,6 +31,10 @@ func TestCRCAndDocumentVectors(t *testing.T) {
 		{cmdMoveSteps | 0x80, 4, []byte{0}, "A5 5A 01 A2 04 00 01 00 00 F1 9D"},
 		{cmdStop, 5, []byte{0xff}, "A5 5A 01 25 05 00 01 00 FF 31 35"},
 		{cmdEmergencyStop, 6, nil, "A5 5A 01 26 06 00 00 00 18 A9"},
+		{cmdGetElevationSafety, 7, nil, "A5 5A 01 40 07 00 00 00 F5 0B"},
+		{cmdSetBrakeTiming, 8, []byte{0xc8, 0, 0xf4, 1, 0x64, 0, 0xf4, 1}, "A5 5A 01 41 08 00 08 00 C8 00 F4 01 64 00 F4 01 9B E8"},
+		{cmdTestBrake, 9, []byte{0xf4, 1}, "A5 5A 01 42 09 00 02 00 F4 01 4C A1"},
+		{cmdReferenceElevation, 10, []byte{0, 0, 0, 0, 0x32, 0x56, 0x4c, 0x45}, "A5 5A 01 43 0A 00 08 00 00 00 00 00 32 56 4C 45 58 6D"},
 	}
 	for _, v := range vectors {
 		got, err := encodeFrame(v.cmd, v.seq, v.payload)
@@ -135,6 +139,11 @@ func TestClientCommandsAndErrors(t *testing.T) {
 		{func() error { return c.ClearEmergencyStop(ctx) }, cmdClearEmergencyStop, nil},
 		{func() error { return c.ZeroEncoder(ctx, opu.Azimuth) }, cmdZeroEncoder, []byte{0}},
 		{func() error { return c.ZeroCommandPosition(ctx, opu.Azimuth) }, cmdZeroCommandPosition, []byte{0}},
+		{func() error {
+			return c.SetBrakeTiming(ctx, opu.BrakeTiming{PowerWaitMs: 200, ReleaseMs: 500, SettleMs: 100, ApplyMs: 500})
+		}, cmdSetBrakeTiming, []byte{0xc8, 0, 0xf4, 1, 0x64, 0, 0xf4, 1}},
+		{func() error { return c.TestBrake(ctx, 500*time.Millisecond) }, cmdTestBrake, []byte{0xf4, 1}},
+		{func() error { return c.ReferenceElevation(ctx, 0) }, cmdReferenceElevation, []byte{0, 0, 0, 0, 0x32, 0x56, 0x4c, 0x45}},
 	}
 	for _, item := range commands {
 		if err := item.call(); err != nil {
@@ -154,6 +163,15 @@ func TestClientCommandsAndErrors(t *testing.T) {
 	}
 	if err := c.Stop(ctx, 3); err == nil {
 		t.Fatal("accepted invalid axis")
+	}
+	if err := c.SetBrakeTiming(ctx, opu.BrakeTiming{PowerWaitMs: 49, ReleaseMs: 500, SettleMs: 100, ApplyMs: 500}); err == nil {
+		t.Fatal("accepted invalid brake timing")
+	}
+	if err := c.TestBrake(ctx, 2500*time.Millisecond); err == nil {
+		t.Fatal("accepted excessive brake test duration")
+	}
+	if err := c.ReferenceElevation(ctx, 90001); err == nil {
+		t.Fatal("accepted elevation reference outside firmware limits")
 	}
 	if len(p.writes) != count {
 		t.Fatal("invalid command sent to device")
@@ -188,7 +206,21 @@ func TestConfigInfoAndStatus(t *testing.T) {
 	if err != nil || status.Axis != opu.Elevation || !status.Moving || !status.Enabled || !status.IndexSeen || status.EncoderAngleMdeg != 9000 {
 		t.Fatalf("status: %+v, %v", status, err)
 	}
-	infoBytes := []byte{1, 0, 1, 3, 0x20, 0x4e, 0, 0, 0x88, 0x13, 0, 0, 0x0f, 0, 0, 0}
+	infoBytes := []byte{2, 2, 1, 3, 0x20, 0x4e, 0, 0, 0x88, 0x13, 0, 0, 0x7f, 0, 0, 0}
+	safetyBytes := make([]byte, 48)
+	safetyBytes[0], safetyBytes[1], safetyBytes[2], safetyBytes[3] = byte(opu.ElevationLocked), byte(opu.ElevationFaultNone), 0x35, 0x01
+	minAngle := int32(-25000)
+	binary.LittleEndian.PutUint32(safetyBytes[4:8], uint32(minAngle))
+	binary.LittleEndian.PutUint32(safetyBytes[8:12], 90000)
+	binary.LittleEndian.PutUint32(safetyBytes[16:20], 30000)
+	binary.LittleEndian.PutUint32(safetyBytes[20:24], 2500)
+	binary.LittleEndian.PutUint16(safetyBytes[24:26], 200)
+	binary.LittleEndian.PutUint16(safetyBytes[26:28], 500)
+	binary.LittleEndian.PutUint16(safetyBytes[28:30], 100)
+	binary.LittleEndian.PutUint16(safetyBytes[30:32], 500)
+	minSteps := int64(-400)
+	binary.LittleEndian.PutUint64(safetyBytes[32:40], uint64(minSteps))
+	binary.LittleEndian.PutUint64(safetyBytes[40:48], 1440)
 	p := &fakePort{}
 	p.answer = func(req []byte) []byte {
 		switch req[3] {
@@ -198,6 +230,8 @@ func TestConfigInfoAndStatus(t *testing.T) {
 			return respond(req, 0, configBytes)
 		case cmdGetStatus:
 			return respond(req, 0, statusBytes)
+		case cmdGetElevationSafety:
+			return respond(req, 0, safetyBytes)
 		default:
 			return respond(req, 0, nil)
 		}
@@ -207,7 +241,7 @@ func TestConfigInfoAndStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := c.Info(context.Background())
-	if err != nil || info.MotionTickHz != 20000 || info.MaxStepRateHz != 5000 || info.Capabilities != 15 {
+	if err != nil || info.FirmwareMajor != 2 || info.FirmwareMinor != 2 || info.MotionTickHz != 20000 || info.MaxStepRateHz != 5000 || info.Capabilities != 0x7f {
 		t.Fatalf("info: %+v, %v", info, err)
 	}
 	got, err = c.AxisConfig(context.Background(), opu.Elevation)
@@ -217,6 +251,13 @@ func TestConfigInfoAndStatus(t *testing.T) {
 	status, err = c.Status(context.Background(), opu.Elevation)
 	if err != nil || status.RemainingSteps != 400 {
 		t.Fatalf("read status: %+v, %v", status, err)
+	}
+	safety, err := c.ElevationSafety(context.Background())
+	if err != nil || safety.State != opu.ElevationLocked || safety.Fault != opu.ElevationFaultNone ||
+		!safety.Referenced || !safety.DriverEnabled || !safety.HardLimitsPresent || !safety.LowerLimitActive ||
+		safety.EmergencyStopped || safety.CooldownMs != 30000 || safety.MaxCoilOnMs != 2500 ||
+		safety.BrakeTiming.ReleaseMs != 500 || safety.MinSteps != -400 || safety.MaxSteps != 1440 {
+		t.Fatalf("elevation safety: %+v, %v", safety, err)
 	}
 }
 

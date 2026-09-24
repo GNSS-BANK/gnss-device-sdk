@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	version    = 1
-	maxPayload = 128
-	maxFrame   = maxPayload + 10
+	version               = 1
+	maxPayload            = 128
+	maxFrame              = maxPayload + 10
+	elevationReferenceKey = uint32(0x454c5632)
 )
 
 const (
@@ -30,28 +31,38 @@ const (
 	cmdGetStatus           = 0x30
 	cmdZeroEncoder         = 0x31
 	cmdZeroCommandPosition = 0x32
+	cmdGetElevationSafety  = 0x40
+	cmdSetBrakeTiming      = 0x41
+	cmdTestBrake           = 0x42
+	cmdReferenceElevation  = 0x43
 )
 
 type Result uint8
 
 const (
-	ResultOK            Result = 0
-	ResultInvalidAxis   Result = 1
-	ResultInvalidArg    Result = 2
-	ResultBusy          Result = 3
-	ResultDisabled      Result = 4
-	ResultEStop         Result = 5
-	ResultNotConfigured Result = 6
-	ResultRXOverflow    Result = 7
-	ResultBadCRC        Result = 8
-	ResultBadHeader     Result = 9
-	ResultUnsupported   Result = 10
+	ResultOK              Result = 0
+	ResultInvalidAxis     Result = 1
+	ResultInvalidArg      Result = 2
+	ResultBusy            Result = 3
+	ResultDisabled        Result = 4
+	ResultEStop           Result = 5
+	ResultNotConfigured   Result = 6
+	ResultRXOverflow      Result = 7
+	ResultBadCRC          Result = 8
+	ResultBadHeader       Result = 9
+	ResultUnsupported     Result = 10
+	ResultLimit           Result = 11
+	ResultNotReferenced   Result = 12
+	ResultCooldown        Result = 13
+	ResultMoveTooLong     Result = 14
+	ResultHardLimit       Result = 15
+	ResultReferenceLocked Result = 16
 )
 
 type ResultError struct{ Code Result }
 
 func (e *ResultError) Error() string {
-	names := [...]string{"OK", "INVALID_AXIS", "INVALID_ARGUMENT", "BUSY", "DISABLED", "ESTOP", "NOT_CONFIGURED", "RX_OVERFLOW", "BAD_CRC", "BAD_HEADER", "UNSUPPORTED"}
+	names := [...]string{"OK", "INVALID_AXIS", "INVALID_ARGUMENT", "BUSY", "DISABLED", "ESTOP", "NOT_CONFIGURED", "RX_OVERFLOW", "BAD_CRC", "BAD_HEADER", "UNSUPPORTED", "LIMIT", "NOT_REFERENCED", "COOLDOWN", "MOVE_TOO_LONG", "HARD_LIMIT", "REFERENCE_LOCKED"}
 	if int(e.Code) < len(names) {
 		return "ОПУ: " + names[e.Code]
 	}
@@ -213,4 +224,54 @@ func parseStatus(b []byte) (opu.AxisStatus, error) {
 		EncoderAngleMdeg:       int32(binary.LittleEndian.Uint32(b[27:31])),
 		IndexCount:             int64(binary.LittleEndian.Uint64(b[31:39])), IndexEvents: binary.LittleEndian.Uint32(b[39:43]),
 	}, nil
+}
+
+func validBrakeTiming(timing opu.BrakeTiming) error {
+	if timing.PowerWaitMs < 50 || timing.PowerWaitMs > 1000 ||
+		timing.ReleaseMs < 50 || timing.ReleaseMs > 1000 ||
+		timing.SettleMs < 50 || timing.SettleMs > 500 ||
+		timing.ApplyMs < 100 || timing.ApplyMs > 2000 {
+		return errors.New("ОПУ: brake timing is out of range")
+	}
+	return nil
+}
+
+func marshalBrakeTiming(timing opu.BrakeTiming) ([]byte, error) {
+	if err := validBrakeTiming(timing); err != nil {
+		return nil, err
+	}
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint16(b[0:2], timing.PowerWaitMs)
+	binary.LittleEndian.PutUint16(b[2:4], timing.ReleaseMs)
+	binary.LittleEndian.PutUint16(b[4:6], timing.SettleMs)
+	binary.LittleEndian.PutUint16(b[6:8], timing.ApplyMs)
+	return b, nil
+}
+
+func parseElevationSafety(b []byte) (opu.ElevationSafety, error) {
+	if len(b) != 48 || b[0] > byte(opu.ElevationBrakeTest) || b[1] > byte(opu.ElevationFaultPositionLimit) ||
+		b[2]&^byte(0x3f) != 0 || b[3]&^byte(0x03) != 0 {
+		return opu.ElevationSafety{}, ErrProtocol
+	}
+	safety := opu.ElevationSafety{
+		State: opu.ElevationSafetyState(b[0]), Fault: opu.ElevationFault(b[1]),
+		Referenced: b[2]&0x01 != 0, CoilEnabled: b[2]&0x02 != 0,
+		DriverEnabled: b[2]&0x04 != 0, EmergencyStopped: b[2]&0x08 != 0,
+		HardLimitsPresent: b[2]&0x10 != 0, DisablePending: b[2]&0x20 != 0,
+		LowerLimitActive: b[3]&0x01 != 0, UpperLimitActive: b[3]&0x02 != 0,
+		MinAngleMdeg: int32(binary.LittleEndian.Uint32(b[4:8])),
+		MaxAngleMdeg: int32(binary.LittleEndian.Uint32(b[8:12])),
+		CoilOnMs:     binary.LittleEndian.Uint32(b[12:16]), CooldownMs: binary.LittleEndian.Uint32(b[16:20]),
+		MaxCoilOnMs: binary.LittleEndian.Uint32(b[20:24]),
+		BrakeTiming: opu.BrakeTiming{
+			PowerWaitMs: binary.LittleEndian.Uint16(b[24:26]), ReleaseMs: binary.LittleEndian.Uint16(b[26:28]),
+			SettleMs: binary.LittleEndian.Uint16(b[28:30]), ApplyMs: binary.LittleEndian.Uint16(b[30:32]),
+		},
+		MinSteps: int64(binary.LittleEndian.Uint64(b[32:40])),
+		MaxSteps: int64(binary.LittleEndian.Uint64(b[40:48])),
+	}
+	if safety.MinAngleMdeg > safety.MaxAngleMdeg || safety.MinSteps > safety.MaxSteps {
+		return opu.ElevationSafety{}, ErrProtocol
+	}
+	return safety, nil
 }

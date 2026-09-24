@@ -318,3 +318,38 @@ func (c *Client) ZeroCommandPosition(ctx context.Context, axis opu.Axis) error {
 	}
 	return c.ack(ctx, cmdZeroCommandPosition, []byte{byte(axis)})
 }
+
+func (c *Client) ElevationSafety(ctx context.Context) (opu.ElevationSafety, error) {
+	b, err := c.request(ctx, cmdGetElevationSafety, nil)
+	if err != nil {
+		return opu.ElevationSafety{}, err
+	}
+	return parseElevationSafety(b)
+}
+
+func (c *Client) SetBrakeTiming(ctx context.Context, timing opu.BrakeTiming) error {
+	b, err := marshalBrakeTiming(timing)
+	if err != nil {
+		return err
+	}
+	return c.ack(ctx, cmdSetBrakeTiming, b)
+}
+
+func (c *Client) TestBrake(ctx context.Context, duration time.Duration) error {
+	if duration < time.Millisecond || duration >= 2500*time.Millisecond || duration%time.Millisecond != 0 {
+		return errors.New("ОПУ: brake test duration must be an integer number of milliseconds in [1, 2499]")
+	}
+	b := make([]byte, 2)
+	binary.LittleEndian.PutUint16(b, uint16(duration/time.Millisecond))
+	return c.ack(ctx, cmdTestBrake, b)
+}
+
+func (c *Client) ReferenceElevation(ctx context.Context, angleMdeg int32) error {
+	if angleMdeg < -25000 || angleMdeg > 90000 {
+		return errors.New("ОПУ: elevation reference angle is outside [-25000, 90000] mdeg")
+	}
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint32(b[0:4], uint32(angleMdeg))
+	binary.LittleEndian.PutUint32(b[4:8], elevationReferenceKey)
+	return c.ack(ctx, cmdReferenceElevation, b)
+}

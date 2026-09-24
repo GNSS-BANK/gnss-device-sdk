@@ -2,7 +2,10 @@
 // antenna positioning units (ОПУ).
 package opu
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type Model string
 
@@ -72,6 +75,68 @@ type Info struct {
 	Capabilities    uint32
 }
 
+const (
+	CapabilityStepMotion uint32 = 1 << iota
+	CapabilityAngleMotion
+	CapabilityEncoderIndex
+	CapabilityEmergencyStop
+	CapabilityElevationBrake
+	CapabilityElevationLimits
+	CapabilityElevationReference
+)
+
+type BrakeTiming struct {
+	PowerWaitMs uint16
+	ReleaseMs   uint16
+	SettleMs    uint16
+	ApplyMs     uint16
+}
+
+type ElevationSafetyState uint8
+
+const (
+	ElevationLocked ElevationSafetyState = iota
+	ElevationPowerWait
+	ElevationReleaseWait
+	ElevationMoving
+	ElevationSettle
+	ElevationApplyWait
+	ElevationBrakeTest
+)
+
+type ElevationFault uint8
+
+const (
+	ElevationFaultNone ElevationFault = iota
+	ElevationFaultEmergencyStop
+	ElevationFaultCoilTimeout
+	ElevationFaultForeground
+	ElevationFaultLink
+	ElevationFaultLimitSwitch
+	ElevationFaultPositionLimit
+)
+
+type ElevationSafety struct {
+	State             ElevationSafetyState
+	Fault             ElevationFault
+	Referenced        bool
+	CoilEnabled       bool
+	DriverEnabled     bool
+	EmergencyStopped  bool
+	HardLimitsPresent bool
+	DisablePending    bool
+	LowerLimitActive  bool
+	UpperLimitActive  bool
+	MinAngleMdeg      int32
+	MaxAngleMdeg      int32
+	CoilOnMs          uint32
+	CooldownMs        uint32
+	MaxCoilOnMs       uint32
+	BrakeTiming       BrakeTiming
+	MinSteps          int64
+	MaxSteps          int64
+}
+
 // Device exposes protocol commands. Move methods acknowledge acceptance only;
 // callers must poll Status and check the physical position themselves.
 type Device interface {
@@ -90,5 +155,9 @@ type Device interface {
 	Status(context.Context, Axis) (AxisStatus, error)
 	ZeroEncoder(context.Context, Axis) error
 	ZeroCommandPosition(context.Context, Axis) error
+	ElevationSafety(context.Context) (ElevationSafety, error)
+	SetBrakeTiming(context.Context, BrakeTiming) error
+	TestBrake(context.Context, time.Duration) error
+	ReferenceElevation(context.Context, int32) error
 	Close() error
 }
