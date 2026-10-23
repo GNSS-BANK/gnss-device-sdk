@@ -16,53 +16,58 @@ const (
 )
 
 const (
-	cmdPing                = 0x01
-	cmdInfo                = 0x02
-	cmdSetAxisConfig       = 0x10
-	cmdGetAxisConfig       = 0x11
-	cmdEnableAxis          = 0x20
-	cmdDisableAxis         = 0x21
-	cmdMoveSteps           = 0x22
-	cmdMoveRelativeAngle   = 0x23
-	cmdMoveAbsoluteAngle   = 0x24
-	cmdStop                = 0x25
-	cmdEmergencyStop       = 0x26
-	cmdClearEmergencyStop  = 0x27
-	cmdGetStatus           = 0x30
-	cmdZeroEncoder         = 0x31
-	cmdZeroCommandPosition = 0x32
-	cmdGetElevationSafety  = 0x40
-	cmdSetBrakeTiming      = 0x41
-	cmdTestBrake           = 0x42
-	cmdReferenceElevation  = 0x43
+	cmdPing                  = 0x01
+	cmdInfo                  = 0x02
+	cmdDiagnostics           = 0x03
+	cmdSetAxisConfig         = 0x10
+	cmdGetAxisConfig         = 0x11
+	cmdEnableAxis            = 0x20
+	cmdDisableAxis           = 0x21
+	cmdMoveSteps             = 0x22
+	cmdMoveRelativeAngle     = 0x23
+	cmdMoveAbsoluteAngle     = 0x24
+	cmdStop                  = 0x25
+	cmdEmergencyStop         = 0x26
+	cmdClearEmergencyStop    = 0x27
+	cmdGetStatus             = 0x30
+	cmdZeroEncoder           = 0x31
+	cmdZeroCommandPosition   = 0x32
+	cmdGetElevationSafety    = 0x40
+	cmdSetBrakeTiming        = 0x41
+	cmdTestBrake             = 0x42
+	cmdReferenceElevation    = 0x43
+	cmdMoveAbsoluteUnwrapped = 0x44
+	cmdGetTarget             = 0x45
+	cmdSetLinkTimeout        = 0x46
 )
 
 type Result uint8
 
 const (
-	ResultOK              Result = 0
-	ResultInvalidAxis     Result = 1
-	ResultInvalidArg      Result = 2
-	ResultBusy            Result = 3
-	ResultDisabled        Result = 4
-	ResultEStop           Result = 5
-	ResultNotConfigured   Result = 6
-	ResultRXOverflow      Result = 7
-	ResultBadCRC          Result = 8
-	ResultBadHeader       Result = 9
-	ResultUnsupported     Result = 10
-	ResultLimit           Result = 11
-	ResultNotReferenced   Result = 12
-	ResultCooldown        Result = 13
-	ResultMoveTooLong     Result = 14
-	ResultHardLimit       Result = 15
-	ResultReferenceLocked Result = 16
+	ResultOK               Result = 0
+	ResultInvalidAxis      Result = 1
+	ResultInvalidArg       Result = 2
+	ResultBusy             Result = 3
+	ResultDisabled         Result = 4
+	ResultEStop            Result = 5
+	ResultNotConfigured    Result = 6
+	ResultRXOverflow       Result = 7
+	ResultBadCRC           Result = 8
+	ResultBadHeader        Result = 9
+	ResultUnsupported      Result = 10
+	ResultLimit            Result = 11
+	ResultNotReferenced    Result = 12
+	ResultCooldown         Result = 13
+	ResultMoveTooLong      Result = 14
+	ResultHardLimit        Result = 15
+	ResultReferenceLocked  Result = 16
+	ResultSequenceConflict Result = 17
 )
 
 type ResultError struct{ Code Result }
 
 func (e *ResultError) Error() string {
-	names := [...]string{"OK", "INVALID_AXIS", "INVALID_ARGUMENT", "BUSY", "DISABLED", "ESTOP", "NOT_CONFIGURED", "RX_OVERFLOW", "BAD_CRC", "BAD_HEADER", "UNSUPPORTED", "LIMIT", "NOT_REFERENCED", "COOLDOWN", "MOVE_TOO_LONG", "HARD_LIMIT", "REFERENCE_LOCKED"}
+	names := [...]string{"OK", "INVALID_AXIS", "INVALID_ARGUMENT", "BUSY", "DISABLED", "ESTOP", "NOT_CONFIGURED", "RX_OVERFLOW", "BAD_CRC", "BAD_HEADER", "UNSUPPORTED", "LIMIT", "NOT_REFERENCED", "COOLDOWN", "MOVE_TOO_LONG", "HARD_LIMIT", "REFERENCE_LOCKED", "SEQUENCE_CONFLICT"}
 	if int(e.Code) < len(names) {
 		return "ОПУ: " + names[e.Code]
 	}
@@ -274,4 +279,33 @@ func parseElevationSafety(b []byte) (opu.ElevationSafety, error) {
 		return opu.ElevationSafety{}, ErrProtocol
 	}
 	return safety, nil
+}
+
+func parseTarget(b []byte) (opu.AxisTarget, error) {
+	if len(b) != 32 || validAxis(opu.Axis(b[0])) != nil || b[1] > 1 || b[2] > 1 || b[3] > 1 ||
+		b[28] > 1 || b[29]&^byte(3) != 0 || binary.LittleEndian.Uint16(b[30:32]) != 0 {
+		return opu.AxisTarget{}, ErrProtocol
+	}
+	return opu.AxisTarget{
+		Axis: opu.Axis(b[0]), Moving: b[1] != 0, Enabled: b[2] != 0, Referenced: b[3] != 0,
+		PositionSteps: int64(binary.LittleEndian.Uint64(b[4:12])),
+		TargetSteps:   int64(binary.LittleEndian.Uint64(b[12:20])),
+		PositionMdeg:  int32(binary.LittleEndian.Uint32(b[20:24])),
+		TargetMdeg:    int32(binary.LittleEndian.Uint32(b[24:28])),
+		Pending:       b[28] != 0, InvertMotor: b[29]&1 != 0, InvertEncoder: b[29]&2 != 0,
+	}, nil
+}
+
+func parseDiagnostics(b []byte) (opu.Diagnostics, error) {
+	if len(b) != 36 || b[32] > byte(opu.ElevationFaultPositionLimit) || b[33] > 1 || b[34]&^byte(7) != 0 || b[35] > 1 {
+		return opu.Diagnostics{}, ErrProtocol
+	}
+	return opu.Diagnostics{
+		BuildID: binary.LittleEndian.Uint32(b[0:4]), ResetFlags: binary.LittleEndian.Uint32(b[4:8]),
+		UptimeMs: binary.LittleEndian.Uint32(b[8:12]), USBSessions: binary.LittleEndian.Uint32(b[12:16]),
+		TXTimeouts: binary.LittleEndian.Uint32(b[16:20]), RXOverflows: binary.LittleEndian.Uint32(b[20:24]),
+		CRCErrors: binary.LittleEndian.Uint32(b[24:28]), LinkTimeoutMs: binary.LittleEndian.Uint32(b[28:32]),
+		Fault: opu.ElevationFault(b[32]), EmergencyStopped: b[33] != 0,
+		ReferenceMask: b[34], USBOnline: b[35] != 0,
+	}, nil
 }

@@ -4,6 +4,7 @@ package stm32
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -50,11 +51,15 @@ func New(port Port, timeout time.Duration) (*Client, error) {
 	if err := port.SetReadTimeout(readTimeout); err != nil {
 		return nil, fmt.Errorf("ОПУ: set read timeout: %w", err)
 	}
-	return &Client{port: port, timeout: timeout}, nil
+	var seed [2]byte
+	if _, err := rand.Read(seed[:]); err != nil {
+		return nil, fmt.Errorf("ОПУ: seed request sequence: %w", err)
+	}
+	return &Client{port: port, timeout: timeout, seq: binary.LittleEndian.Uint16(seed[:])}, nil
 }
 
-// Open opens a USB CDC COM/tty port at 115200 8N1, then verifies PING and
-// GET_INFO. Opening does not enable axes or start motion.
+// Open opens a USB CDC COM/tty port at 115200 8N1, then verifies GET_INFO and
+// PING. Only the read-only GET_INFO handshake is retried (up to three times). Opening does not enable axes or start motion.
 func Open(ctx context.Context, path string) (*Client, error) {
 	if path == "" {
 		return nil, errors.New("ОПУ: empty port path")
@@ -76,6 +81,15 @@ func Open(ctx context.Context, path string) (*Client, error) {
 			c.Close()
 		}
 	}()
+	for attempt := 0; attempt < 3; attempt++ {
+		_, err = c.Info(ctx)
+		if err == nil || ctx.Err() != nil {
+			break
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
 	var echo []byte
 	echo, err = c.Ping(ctx, []byte("OPU"))
 	if err != nil {
@@ -83,10 +97,6 @@ func Open(ctx context.Context, path string) (*Client, error) {
 	}
 	if !bytes.Equal(echo, []byte("OPU")) {
 		err = ErrProtocol
-		return nil, err
-	}
-	_, err = c.Info(ctx)
-	if err != nil {
 		return nil, err
 	}
 	return c, nil
@@ -273,6 +283,11 @@ func (c *Client) MoveAbsoluteAngle(ctx context.Context, axis opu.Axis, mdeg int3
 	return c.moveAngle(ctx, cmdMoveAbsoluteAngle, axis, mdeg)
 }
 
+// MoveAbsoluteUnwrapped uses the exact signed coordinate (firmware 3.0+).
+func (c *Client) MoveAbsoluteUnwrapped(ctx context.Context, axis opu.Axis, mdeg int32) error {
+	return c.moveAngle(ctx, cmdMoveAbsoluteUnwrapped, axis, mdeg)
+}
+
 func (c *Client) Stop(ctx context.Context, axis opu.Axis) error {
 	if axis != opu.AllAxes {
 		if err := validAxis(axis); err != nil {
@@ -352,4 +367,42 @@ func (c *Client) ReferenceElevation(ctx context.Context, angleMdeg int32) error 
 	binary.LittleEndian.PutUint32(b[0:4], uint32(angleMdeg))
 	binary.LittleEndian.PutUint32(b[4:8], elevationReferenceKey)
 	return c.ack(ctx, cmdReferenceElevation, b)
+}
+
+func (c *Client) Diagnostics(ctx context.Context) (opu.Diagnostics, error) {
+	b, err := c.request(ctx, cmdDiagnostics, nil)
+	if err != nil {
+		return opu.Diagnostics{}, err
+	}
+	return parseDiagnostics(b)
+}
+
+func (c *Client) Target(ctx context.Context, axis opu.Axis) (opu.AxisTarget, error) {
+	if err := validAxis(axis); err != nil {
+		return opu.AxisTarget{}, err
+	}
+	b, err := c.request(ctx, cmdGetTarget, []byte{byte(axis)})
+	if err != nil {
+		return opu.AxisTarget{}, err
+	}
+	target, err := parseTarget(b)
+	if err != nil {
+		return opu.AxisTarget{}, err
+	}
+	if target.Axis != axis {
+		return opu.AxisTarget{}, ErrProtocol
+	}
+	return target, nil
+}
+
+// SetLinkTimeout sets an optional firmware lease. Zero disables it; other
+// values must be whole milliseconds from 500 through 60000. This does not
+// start a heartbeat goroutine; the application must keep dispatching requests.
+func (c *Client) SetLinkTimeout(ctx context.Context, timeout time.Duration) error {
+	if timeout < 0 || timeout%time.Millisecond != 0 || timeout != 0 && (timeout < 500*time.Millisecond || timeout > 60*time.Second) {
+		return errors.New("ОПУ: link timeout must be 0 or 500..60000 whole milliseconds")
+	}
+	b := make([]byte, 4)
+	binary.LittleEndian.PutUint32(b, uint32(timeout/time.Millisecond))
+	return c.ack(ctx, cmdSetLinkTimeout, b)
 }

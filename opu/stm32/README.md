@@ -1,68 +1,72 @@
 # OPU 3D / STM32F407
 
-Библиотека реализует версию 1 бинарного протокола из документа
-`OPU_STM32_Protocol_RU_v2_2`: USB CDC (виртуальный COM/tty), 115200 8N1, кадры
-`A5 5A`, little-endian, CRC-16/CCITT-FALSE. Поддержаны все команды каталога:
-PING, GET_INFO, SET/GET_AXIS_CONFIG, ENABLE/DISABLE_AXIS, три MOVE, STOP,
-EMERGENCY_STOP, CLEAR_EMERGENCY_STOP, GET_STATUS, оба ZERO,
-GET_ELEVATION_SAFETY, SET_BRAKE_TIMING, TEST_BRAKE и REFERENCE_ELEVATION.
+SDK реализует бинарный wire-протокол 1 по редакции 20 октября 2026 года
+`OPU_STM32_Protocol_RU_2.docx`: прошивка 3.0 без тормоза, build ID
+`0xDF405E70`. USB CDC, 115200 8N1, кадры `A5 5A`, little-endian,
+CRC-16/CCITT-FALSE. Модель `stm32-opu-3d-v1` обозначает формат кадра.
+
+Поддержаны PING, GET_INFO, GET_DIAGNOSTICS, SET/GET_AXIS_CONFIG,
+ENABLE/DISABLE_AXIS, MOVE_STEPS, MOVE_REL_ANGLE, MOVE_ABS_ANGLE,
+MOVE_ABS_UNWRAPPED, STOP, EMERGENCY_STOP, CLEAR_EMERGENCY_STOP, GET_STATUS,
+оба ZERO, REFERENCE_ELEVATION, GET_TARGET и SET_LINK_TIMEOUT.
+SET_BRAKE_TIMING и TEST_BRAKE сохранены для старых прошивок 2.2; прошивка 3.0
+возвращает UNSUPPORTED. GET_ELEVATION_SAFETY оставлен для совместимости:
+нулевые state/coil/cooldown/timing не подтверждают остановку.
 
 ```go
 ctx := context.Background()
 unit, err := stm32.Open(ctx, "COM15") // Linux: /dev/ttyACM0
 if err != nil { return err }
 defer unit.Close()
-
-status, err := unit.Status(ctx, opu.Azimuth)
+info, err := unit.Info(ctx)
 if err != nil { return err }
-_ = status
+diag, err := unit.Diagnostics(ctx)
+if err != nil { return err }
+_ = info // Для этой поставки: major=3, protocol=1, axes=3.
+_ = diag // Сверить BuildID, USBSessions, UptimeMs, fault и ESTOP.
 ```
 
-`Open` проверяет PING и GET_INFO, включая версию протокола и число осей.
-Версия кадра по-прежнему равна 1; номер прошивки 2.2 и возможности доступны
-через `Info`. Перед первым движением оси угла места прочитайте
-`ElevationSafety`, выключите её драйвер и задайте известный физический угол
-через `ReferenceElevation`. Обычный `ZeroCommandPosition` разрешён для этой
-оси только до первой привязки и только как привязка к 0°.
-Для тестов и приложения с собственным открытием порта доступен
-`stm32.New(port, timeout)`: `port` реализует `Read`, `Write`, `Close` и
-`SetReadTimeout(time.Duration)`, например `serial.Port` из `go.bug.st/serial`.
-`New` принимает порт во владение; после него вызовите `Ping` и `Info` перед
-управлением движением.
+`Open` сначала проверяет GET_INFO (до трёх попыток чтения), затем PING.
+Он не меняет привязку, настройки или разрешение драйверов. `New(port, timeout)`
+принимает открытый порт во владение; вызывающий сам выполняет handshake.
+Все запросы сериализуются mutex; начальный sequence выбирается случайно,
+для каждого запроса увеличивается u16. Ответ проверяется по cmd/seq/CRC/длине.
+Таймаут ответа по умолчанию 2 с, чтения COM — 50 мс. Движения не повторяются
+автоматически: после таймаута выполнение неизвестно. Кеш прошивки ограничен
+8 изменяющими запросами и 10 с; конфликт seq возвращает
+`ResultSequenceConflict` (17), а reset/новая USB-сессия очищают кеш.
 
-Оси: `opu.Azimuth` (0), `opu.Elevation` (1), `opu.Polarization` (2).
-`opu.AllAxes` (0xFF) разрешён только для `Stop`. Углы передаются целыми
-тысячными долями градуса (`12500` = 12,5°). `MoveSteps` принимает
-относительные импульсы STEP. Ответ MOVE означает только принятие команды:
-для оси угла места завершение требует одновременно `!Status.Moving` и
-`ElevationSafety.State == ElevationLocked`. Перед следующим движением также
-проверьте отсутствие fault и ESTOP, наличие привязки и `CooldownMs == 0`.
-Во время движения или теста отправляйте корректный PING/STATUS примерно каждые
-0,5 с: отсутствие связи более 3 с вызывает аварийную остановку. Соответствие
-физическому углу проверяйте отдельно.
+Оси: AZ=0, УМ=1, POL=2; FF допустим только для STOP. Угол — signed int32
+в миллиградусах (12500 = 12,5°), STEP — signed int64.
+`MoveAbsoluteAngle` (0x24) на AZ выбирает ближайший эквивалент: из нуля
+270° даёт −90°, а 360° — 0°. `MoveAbsoluteUnwrapped` (0x44) сохраняет
+развёрнутую цель: +270° и +360° соответственно. Клиент контролирует кабельный
+маршрут. УМ имеет пределы −25…90°. ABS может менять цель на ходу; REL/STEPS
+на занятой оси возвращают BUSY.
 
-Каждый вызов сериализуется общей блокировкой, последовательность запроса
-проверяется в ответе, повреждённые кадры отбрасываются. Время ожидания ответа
-по умолчанию 2 с. Клиент не повторяет команды автоматически: после тайм-аута
-или ошибки записи выполнение уже отправленной команды неизвестно. Буфер
-частичного ответа при тайм-ауте очищается; повторное открытие порта само по
-себе не сбрасывает парсер прошивки. Конфигурация осей хранится в RAM STM32 и
-после его перезапуска должна быть установлена снова.
+ACK означает принятие. Опрашивайте `Target` и `Diagnostics` до
+`!Moving && !Pending`, проверяйте enabled/referenced, fault/ESTOP и
+фактическую командную позицию относительно запрошенной цели с допуском
+одного STEP. STOP также приводит к покою, но не доказывает достижение цели.
+`PositionSteps` — выданные импульсы, а не физическая обратная связь.
+`Status.EncoderAngleMdeg == math.MinInt32` означает ненастроенный энкодер.
 
-Пример чтения с учётом ошибок прошивки:
+`ZeroCommandPosition` и `ReferenceElevation` объявляют известную физическую
+координату на неподвижной оси, не ищут датчик и не двигают установку.
+`ZeroEncoder` изменяет только измерительный отсчёт. После ESTOP УМ теряет
+привязку; CLEAR снимает fault/ESTOP, но не восстанавливает привязку.
+STOP и ESTOP сохраняют уже включённое удержание; DISABLE снимает его после
+замедления. После reset драйверы выключены, а координата УМ неизвестна.
 
-```go
-config, err := unit.AxisConfig(ctx, opu.Elevation)
-var result *stm32.ResultError
-if errors.As(err, &result) && result.Code == stm32.ResultBusy {
-    // Ось сейчас движется.
-}
-_ = config
-```
+`SetLinkTimeout(ctx, 0)` отключает lease; допустимы также целые 500…60000 мс.
+SDK не запускает heartbeat: приложение само обслуживает обмен. По умолчанию
+после reset lease=0. Истечение включённого lease вызывает STOP/fault=4.
+Не блокируйте опрос длительным RX. После потери USB сравните диагностику,
+конфигурацию и привязки; не возобновляйте старую цель и не обнуляйте оси
+автоматически. UptimeMs оборачивается по u32.
 
-`Status.EncoderAngleMdeg == math.MinInt32` означает, что масштаб энкодера не
-настроен. `ZeroEncoder`, `ZeroCommandPosition` и `ReferenceElevation` изменяют
-разные части координатного состояния; ни одна команда не ищет механический
-ноль. `ElevationSafety` сообщает программное состояние тормоза, пределы,
-cooldown и защёлкнутую причину аварии, но не подтверждает ток, температуру или
-физическое положение штока.
+Конфигурация хранится в RAM. Перед правкой считайте её целиком и после записи
+проверьте чтением. Геометрия и invert_motor сбрасывают позицию/привязку;
+скорости и настройки энкодера их сохраняют. Штатные full_steps/microsteps —
+200/8, редукторы AZ=18/1, УМ=18/5, POL=1/1. Поле microsteps не переключает
+DIP драйвера. Физический масштаб проверяется малым ходом на стенде.

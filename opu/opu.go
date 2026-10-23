@@ -65,6 +65,38 @@ type AxisStatus struct {
 	IndexEvents            uint32
 }
 
+// AxisTarget reports issued STEP coordinates, not a closed-loop physical position.
+type AxisTarget struct {
+	Axis          Axis
+	Moving        bool
+	Enabled       bool
+	Referenced    bool
+	PositionSteps int64
+	TargetSteps   int64
+	PositionMdeg  int32
+	TargetMdeg    int32
+	Pending       bool
+	InvertMotor   bool
+	InvertEncoder bool
+}
+
+// Diagnostics identifies the firmware session and the controller-wide fault.
+// UptimeMs wraps at uint32; compare elapsed times with wraparound in mind.
+type Diagnostics struct {
+	BuildID          uint32
+	ResetFlags       uint32
+	UptimeMs         uint32
+	USBSessions      uint32
+	TXTimeouts       uint32
+	RXOverflows      uint32
+	CRCErrors        uint32
+	LinkTimeoutMs    uint32
+	Fault            ElevationFault
+	EmergencyStopped bool
+	ReferenceMask    uint8
+	USBOnline        bool
+}
+
 type Info struct {
 	FirmwareMajor   uint8
 	FirmwareMinor   uint8
@@ -138,17 +170,23 @@ type ElevationSafety struct {
 }
 
 // Device exposes protocol commands. Move methods acknowledge acceptance only;
-// callers must poll Status and check the physical position themselves.
+// callers must poll Target/Diagnostics (firmware 3.0) and verify physical position.
 type Device interface {
 	Ping(context.Context, []byte) ([]byte, error)
 	Info(context.Context) (Info, error)
+	Diagnostics(context.Context) (Diagnostics, error)
+	Target(context.Context, Axis) (AxisTarget, error)
+	SetLinkTimeout(context.Context, time.Duration) error
 	SetAxisConfig(context.Context, AxisConfig) error
 	AxisConfig(context.Context, Axis) (AxisConfig, error)
 	EnableAxis(context.Context, Axis) error
 	DisableAxis(context.Context, Axis) error
 	MoveSteps(context.Context, Axis, int64) error
 	MoveRelativeAngle(context.Context, Axis, int32) error
+	// MoveAbsoluteAngle selects the nearest equivalent azimuth on firmware 3.0.
 	MoveAbsoluteAngle(context.Context, Axis, int32) error
+	// MoveAbsoluteUnwrapped preserves the requested turn, including 360 degrees.
+	MoveAbsoluteUnwrapped(context.Context, Axis, int32) error
 	Stop(context.Context, Axis) error
 	EmergencyStop(context.Context) error
 	ClearEmergencyStop(context.Context) error
