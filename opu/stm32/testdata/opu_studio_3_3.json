@@ -1,0 +1,153 @@
+{
+  "source": "OPU Studio 3.3.0 protocol.py",
+  "source_sha256": "dad2751e5d6823c1caf1ba6af848f947fb9b6633ac5de5000fd1861ab9bedaad",
+  "vectors": [
+    {
+      "name": "ping",
+      "command": 1,
+      "sequence": 65535,
+      "frame_hex": "a55a0101ffff04004f5055003647",
+      "response_data_hex": "4f505500"
+    },
+    {
+      "name": "info",
+      "command": 2,
+      "sequence": 0,
+      "frame_hex": "a55a010200000000330f",
+      "response_data_hex": "03000103204e000088130000ef1f0000"
+    },
+    {
+      "name": "diagnostics",
+      "command": 3,
+      "sequence": 1,
+      "frame_hex": "a55a010301000000d6d3",
+      "response_data_hex": "705e40df0100000088130000020000000300000004000000050000000000000000000701"
+    },
+    {
+      "name": "set_config",
+      "command": 16,
+      "sequence": 2,
+      "frame_hex": "a55a011002001e0000c8000800120000000100000000000000d0070000e80300006400000003ddd6",
+      "response_data_hex": ""
+    },
+    {
+      "name": "get_config",
+      "command": 17,
+      "sequence": 3,
+      "frame_hex": "a55a0111030001000069cf",
+      "response_data_hex": "00c8000800120000000100000000000000d0070000e80300006400000003"
+    },
+    {
+      "name": "enable",
+      "command": 32,
+      "sequence": 4,
+      "frame_hex": "a55a0120040001000091c2",
+      "response_data_hex": ""
+    },
+    {
+      "name": "disable",
+      "command": 33,
+      "sequence": 5,
+      "frame_hex": "a55a01210500010002220d",
+      "response_data_hex": ""
+    },
+    {
+      "name": "steps",
+      "command": 34,
+      "sequence": 6,
+      "frame_hex": "a55a0122060009000201000000ffffffffe566",
+      "response_data_hex": ""
+    },
+    {
+      "name": "relative",
+      "command": 35,
+      "sequence": 7,
+      "frame_hex": "a55a012307000500012ccfffff6c89",
+      "response_data_hex": ""
+    },
+    {
+      "name": "absolute",
+      "command": 36,
+      "sequence": 8,
+      "frame_hex": "a55a01240800050000b01e040051ad",
+      "response_data_hex": ""
+    },
+    {
+      "name": "unwrapped",
+      "command": 68,
+      "sequence": 9,
+      "frame_hex": "a55a01440900050000407e0500723a",
+      "response_data_hex": ""
+    },
+    {
+      "name": "stop_all",
+      "command": 37,
+      "sequence": 10,
+      "frame_hex": "a55a01250a000100ffc850",
+      "response_data_hex": ""
+    },
+    {
+      "name": "stop_axis",
+      "command": 37,
+      "sequence": 11,
+      "frame_hex": "a55a01250b0001000148f4",
+      "response_data_hex": ""
+    },
+    {
+      "name": "estop",
+      "command": 38,
+      "sequence": 12,
+      "frame_hex": "a55a01260c000000b3c1",
+      "response_data_hex": ""
+    },
+    {
+      "name": "clear_estop",
+      "command": 39,
+      "sequence": 13,
+      "frame_hex": "a55a01270d000000561d",
+      "response_data_hex": ""
+    },
+    {
+      "name": "status",
+      "command": 48,
+      "sequence": 14,
+      "frame_hex": "a55a01300e000100019a8e",
+      "response_data_hex": "01010f900100007b000000c7cfffffffffffff3657ffffffffffff5052feff29eeffffffffffff09000000"
+    },
+    {
+      "name": "zero_encoder",
+      "command": 49,
+      "sequence": 15,
+      "frame_hex": "a55a01310f000100020851",
+      "response_data_hex": ""
+    },
+    {
+      "name": "zero_command",
+      "command": 50,
+      "sequence": 16,
+      "frame_hex": "a55a0132100001000128ce",
+      "response_data_hex": ""
+    },
+    {
+      "name": "reference",
+      "command": 67,
+      "sequence": 17,
+      "frame_hex": "a55a014311000800589effff32564c459b31",
+      "response_data_hex": ""
+    },
+    {
+      "name": "target",
+      "command": 69,
+      "sequence": 18,
+      "frame_hex": "a55a014512000100017607",
+      "response_data_hex": "0101010170feffffffffffffa005000000000000589effff905f010001030000"
+    },
+    {
+      "name": "link_timeout",
+      "command": 70,
+      "sequence": 19,
+      "frame_hex": "a55a014613000400b80b0000aefc",
+      "response_data_hex": ""
+    }
+  ]
+}

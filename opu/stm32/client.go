@@ -121,6 +121,9 @@ func (c *Client) request(ctx context.Context, cmd uint8, payload []byte) ([]byte
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	// Each serialized exchange starts a fresh parse, as in OPU Studio. An
+	// incomplete stale reply must not hold the next response behind its length.
+	c.parser.buffer = nil
 	c.seq++
 	seq := c.seq
 	frame, err := encodeFrame(cmd, seq, payload)
